@@ -162,7 +162,7 @@ project { id, name, createdAt, gallery[], rooms[] }
 | Scope of works | ✅ view + edit | ✅ |
 | Grand total | ✅ | ✅ |
 | Materials table | ❌ locked | ✅ |
-| Labor table + editing | ❌ locked | ✅ |
+| Labor table + editing | ✅ | ✅ |
 | Custom material prices | ❌ | ✅ |
 | Scope editing | ✅ | ✅ |
 

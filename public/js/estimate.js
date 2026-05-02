@@ -154,7 +154,13 @@ function estimateCards(estimate, settings, showSourceTags, allowEdit) {
     scopeRows = '<li style="color:var(--ink2)">No scope items.</li>';
   } else {
     scopeRows = scopeItems.map((s, i) => allowEdit
-      ? `<li class="scope-item"><span>${escHtml(s)}</span><button class="scope-del" onclick="removeScopeItem(${i})" aria-label="Remove">✕</button></li>`
+      ? `<li class="scope-item" id="scope_item_${i}">
+          <span>${escHtml(s)}</span>
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button class="scope-del" onclick="editScopeItem(${i})" aria-label="Edit" style="color:var(--ink2);">✏️</button>
+            <button class="scope-del" onclick="removeScopeItem(${i})" aria-label="Remove">✕</button>
+          </div>
+        </li>`
       : `<li>${escHtml(s)}</li>`
     ).join('');
   }
@@ -171,6 +177,7 @@ function estimateCards(estimate, settings, showSourceTags, allowEdit) {
 
   // Materials
   if (paid) {
+    const matLabelSpan = (showSourceTags ? 3 : 2) + (allowEdit ? 1 : 0);
     html += `
       <div class="card">
         <div class="card-title">Materials</div>
@@ -182,19 +189,22 @@ function estimateCards(estimate, settings, showSourceTags, allowEdit) {
               <th style="text-align:right">Qty</th>
               <th style="text-align:right">Unit $</th>
               <th style="text-align:right">Total</th>
+              ${allowEdit ? '<th></th>' : ''}
             </tr></thead>
             <tbody>
-              ${(estimate.materials || []).map(m => `
-                <tr>
+              ${(estimate.materials || []).map((m, i) => `
+                <tr id="mat_row_${i}">
                   <td>${escHtml(m.item)}<br><small style="color:var(--ink2)">${escHtml(m.unit)}</small></td>
                   ${showSourceTags ? `<td><span class="source-tag">${escHtml(m._source||'')}</span></td>` : ''}
                   <td style="text-align:right">${m.quantity}</td>
                   <td style="text-align:right">${formatMoney(m.unit_cost)}</td>
                   <td style="text-align:right"><strong>${formatMoney(m.line_total)}</strong></td>
+                  ${allowEdit ? `<td style="width:28px;"><button class="scope-del" onclick="editMaterialRow(${i})" aria-label="Edit" style="color:var(--ink2);font-size:0.85rem;">✏️</button></td>` : ''}
                 </tr>`).join('')}
               <tr class="subtotal-row">
-                <td colspan="${showSourceTags ? 4 : 3}">Materials Subtotal</td>
+                <td colspan="${matLabelSpan}">Materials Subtotal</td>
                 <td>${formatMoney(estimate.totals?.materials_subtotal)}</td>
+                ${allowEdit ? '<td></td>' : ''}
               </tr>
             </tbody>
           </table>
@@ -213,8 +223,8 @@ function estimateCards(estimate, settings, showSourceTags, allowEdit) {
       </div>`;
   }
 
-  // Labor — recalculate totals using current settings rate
-  if (paid) {
+  // Labor — recalculate totals using current settings rate (visible to all users)
+  {
     const defaultRate = settings.laborRate;
     let laborSub = 0;
     const laborRows = (estimate.labor || []).map((l, i) => {
@@ -289,6 +299,29 @@ function estimateCards(estimate, settings, showSourceTags, allowEdit) {
 }
 
 // ─── Scope Editing ────────────────────────────────────────
+
+function editScopeItem(index) {
+  const s = window._exportContext.estimate.scope_of_works[index];
+  const li = document.getElementById('scope_item_' + index);
+  if (!li) return;
+  li.innerHTML = `
+    <input type="text" id="scope_text_${index}" class="form-input" value="${escHtml(s)}"
+      style="flex:1;margin-bottom:0;" onkeydown="if(event.key==='Enter')saveScopeItemText(${index})">
+    <div style="display:flex;gap:4px;flex-shrink:0;margin-left:6px;">
+      <button class="btn btn-primary btn-sm" onclick="saveScopeItemText(${index})">✓</button>
+      <button class="btn btn-outline btn-sm" onclick="rerenderEstimate()">✕</button>
+    </div>`;
+  document.getElementById('scope_text_' + index)?.focus();
+}
+
+function saveScopeItemText(index) {
+  const input = document.getElementById('scope_text_' + index);
+  const text = input?.value.trim();
+  if (!text) { showToast('Enter scope text', 'error'); return; }
+  const scope = [...(window._exportContext.estimate.scope_of_works || [])];
+  scope[index] = text;
+  saveScopeEdits(scope);
+}
 
 function removeScopeItem(index) {
   const scope = [...(window._exportContext.estimate.scope_of_works || [])];
@@ -403,6 +436,76 @@ function saveLaborEdit(index) {
     const photo = room?.photos.find(p => p.id === photoId);
     if (photo?.estimate) updateRoomPhoto(projectId, roomId, photoId, {
       estimate: { ...photo.estimate, labor: ctx.estimate.labor, totals: ctx.estimate.totals }
+    });
+  }
+
+  rerenderEstimate();
+  showToast('Updated', 'success');
+}
+
+// ─── Material Editing ─────────────────────────────────────
+
+function editMaterialRow(index) {
+  const m = window._exportContext.estimate.materials[index];
+  const row = document.getElementById('mat_row_' + index);
+  if (!row) return;
+  const colCount = row.cells.length;
+  row.innerHTML = `<td colspan="${colCount}" style="padding:10px 4px;">
+    <div style="font-size:0.8rem;font-weight:600;margin-bottom:8px;color:var(--ink);">${escHtml(m.item)} <small style="color:var(--ink2);font-weight:400;">${escHtml(m.unit)}</small></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--ink2);">QTY</label>
+        <input type="number" id="mat_qty_${index}" value="${m.quantity}" min="0" step="0.1" inputmode="decimal"
+          style="width:72px;font-family:var(--font-mono);font-size:0.9rem;padding:6px 8px;border:1px solid var(--hairline);border-radius:8px;text-align:right;">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--ink2);">UNIT $</label>
+        <input type="number" id="mat_cost_${index}" value="${m.unit_cost}" min="0" step="0.01" inputmode="decimal"
+          style="width:80px;font-family:var(--font-mono);font-size:0.9rem;padding:6px 8px;border:1px solid var(--hairline);border-radius:8px;text-align:right;">
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="saveMaterialEdit(${index})">Save</button>
+      <button class="btn btn-outline btn-sm" onclick="rerenderEstimate()">✕</button>
+    </div>
+  </td>`;
+}
+
+function saveMaterialEdit(index) {
+  const qty  = parseFloat(document.getElementById('mat_qty_' + index)?.value);
+  const cost = parseFloat(document.getElementById('mat_cost_' + index)?.value);
+  if (isNaN(qty)  || qty  < 0) { showToast('Enter valid quantity',   'error'); return; }
+  if (isNaN(cost) || cost < 0) { showToast('Enter valid unit cost',  'error'); return; }
+
+  const ctx    = window._exportContext;
+  const markup = (window._renderContext?.settings || getSettings()).markupPct;
+  const lineTotal = parseFloat((qty * cost * (1 + markup / 100)).toFixed(2));
+
+  ctx.estimate.materials[index] = {
+    ...ctx.estimate.materials[index],
+    quantity: qty,
+    unit_cost: cost,
+    line_total: lineTotal,
+  };
+
+  // Recalculate materials subtotal + grand total
+  let matSub = 0;
+  ctx.estimate.materials.forEach(m => { matSub += m.line_total; });
+  matSub = parseFloat(matSub.toFixed(2));
+  const labSub = ctx.estimate.totals?.labor_subtotal || 0;
+  if (!ctx.estimate.totals) ctx.estimate.totals = {};
+  ctx.estimate.totals.materials_subtotal = matSub;
+  ctx.estimate.totals.grand_total = parseFloat((matSub + labSub).toFixed(2));
+
+  // Persist to localStorage
+  if (estType === 'room') {
+    const room = getRoomById(projectId, roomId);
+    if (room?.roomEstimate) updateRoom(projectId, roomId, {
+      roomEstimate: { ...room.roomEstimate, materials: ctx.estimate.materials, totals: ctx.estimate.totals }
+    });
+  } else if (estType === 'photo') {
+    const room = getRoomById(projectId, roomId);
+    const photo = room?.photos.find(p => p.id === photoId);
+    if (photo?.estimate) updateRoomPhoto(projectId, roomId, photoId, {
+      estimate: { ...photo.estimate, materials: ctx.estimate.materials, totals: ctx.estimate.totals }
     });
   }
 
