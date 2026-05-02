@@ -1,4 +1,5 @@
 const https = require('https');
+const crypto = require('crypto');
 
 const WHOP_PRODUCT_ID = 'prod_FhQkubpj4IiKz';
 
@@ -64,10 +65,13 @@ exports.handler = async function (event) {
   const { license_key } = body || {};
   if (!license_key) return { statusCode: 400, headers, body: JSON.stringify({ valid: false, error: 'License key required' }) };
 
-  // Admin bypass
-  const adminKey = (process.env.ADMIN_KEY || '').trim();
-  if (adminKey && license_key.trim().toUpperCase() === adminKey.toUpperCase()) {
-    return { statusCode: 200, headers, body: JSON.stringify({ valid: true }) };
+  // Admin bypass — derived from LICENSE_SECRET
+  const secret = (process.env.LICENSE_SECRET || '').trim();
+  if (secret) {
+    const adminKey = crypto.createHmac('sha256', secret).update('admin').digest('hex').substring(0, 16).toUpperCase();
+    if (license_key.trim().toUpperCase() === adminKey) {
+      return { statusCode: 200, headers, body: JSON.stringify({ valid: true }) };
+    }
   }
 
   try {

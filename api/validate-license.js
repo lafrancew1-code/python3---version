@@ -1,4 +1,5 @@
 const https = require('https');
+const crypto = require('crypto');
 
 const WHOP_PRODUCT_ID = 'prod_FhQkubpj4IiKz';
 
@@ -63,11 +64,14 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // Admin bypass
-  const adminKey = (process.env.ADMIN_KEY || '').trim();
-  if (adminKey && license_key.trim().toUpperCase() === adminKey.toUpperCase()) {
-    res.status(200).json({ valid: true });
-    return;
+  // Admin bypass — derived from LICENSE_SECRET (already confirmed working in Vercel)
+  const secret = (process.env.LICENSE_SECRET || '').trim();
+  if (secret) {
+    const adminKey = crypto.createHmac('sha256', secret).update('admin').digest('hex').substring(0, 16).toUpperCase();
+    if (license_key.trim().toUpperCase() === adminKey) {
+      res.status(200).json({ valid: true });
+      return;
+    }
   }
 
   try {
