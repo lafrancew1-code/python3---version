@@ -30,7 +30,8 @@ function callWhop(licenseKey, apiKey) {
               resolve({ valid: true });
             }
           } else {
-            resolve({ valid: false, error: parsed.error || parsed.message || 'Invalid license key' });
+            const errMsg = typeof parsed.error === 'string' ? parsed.error : (typeof parsed.message === 'string' ? parsed.message : 'Invalid license key');
+            resolve({ valid: false, error: errMsg });
           }
         } catch {
           resolve({ valid: false, error: 'Invalid response from license server' });

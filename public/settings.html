@@ -160,7 +160,8 @@ async function submitLicense() {
       renderPlanUI();
       showToast('Pro unlocked! Welcome.', 'success');
     } else {
-      showLicenseError(data.error || 'Invalid license key.');
+      const msg = typeof data.error === 'string' ? data.error : 'Invalid license key.';
+      showLicenseError(msg);
     }
   } catch {
     showLicenseError('Network error — check your connection and try again.');
