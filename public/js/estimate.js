@@ -369,7 +369,9 @@ function saveLaborEdit(index) {
   if (isNaN(rate)  || rate  < 0) { showToast('Enter valid rate',  'error'); return; }
 
   const ctx = window._exportContext;
-  const defaultRate = (window._renderContext?.settings || getSettings()).laborRate;
+  const settings = getSettings();
+  const defaultRate = settings.laborRate;
+
   ctx.estimate.labor[index] = {
     ...ctx.estimate.labor[index],
     hours,
@@ -378,14 +380,30 @@ function saveLaborEdit(index) {
     line_total: parseFloat((hours * rate).toFixed(2)),
   };
 
-  // Persist to localStorage
+  // Recalculate totals explicitly
+  let newLaborSub = 0;
+  ctx.estimate.labor.forEach(l => {
+    const r = (l._customRate != null) ? l._customRate : defaultRate;
+    newLaborSub += l.hours * r;
+  });
+  newLaborSub = parseFloat(newLaborSub.toFixed(2));
+  const matSub = ctx.estimate.totals?.materials_subtotal || 0;
+  if (!ctx.estimate.totals) ctx.estimate.totals = {};
+  ctx.estimate.totals.labor_subtotal = newLaborSub;
+  ctx.estimate.totals.grand_total = parseFloat((matSub + newLaborSub).toFixed(2));
+
+  // Persist labor + updated totals to localStorage
   if (estType === 'room') {
     const room = getRoomById(projectId, roomId);
-    if (room?.roomEstimate) updateRoom(projectId, roomId, { roomEstimate: { ...room.roomEstimate, labor: ctx.estimate.labor } });
+    if (room?.roomEstimate) updateRoom(projectId, roomId, {
+      roomEstimate: { ...room.roomEstimate, labor: ctx.estimate.labor, totals: ctx.estimate.totals }
+    });
   } else if (estType === 'photo') {
     const room = getRoomById(projectId, roomId);
     const photo = room?.photos.find(p => p.id === photoId);
-    if (photo?.estimate) updateRoomPhoto(projectId, roomId, photoId, { estimate: { ...photo.estimate, labor: ctx.estimate.labor } });
+    if (photo?.estimate) updateRoomPhoto(projectId, roomId, photoId, {
+      estimate: { ...photo.estimate, labor: ctx.estimate.labor, totals: ctx.estimate.totals }
+    });
   }
 
   rerenderEstimate();
