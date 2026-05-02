@@ -120,6 +120,7 @@ function renderProjectEstimate(breakdown) {
 
 function renderEstimateBody({ estimate, settings, headline, createdAt, notes, scope, showSourceTags }) {
   window._exportContext = { estimate, settings, headline, createdAt, notes };
+  window._renderContext = { estimate, settings, headline, createdAt, notes, scope, showSourceTags };
 
   const allowEdit = scope === 'photo' || scope === 'room';
   const content = document.getElementById('estimateContent');
@@ -128,6 +129,13 @@ function renderEstimateBody({ estimate, settings, headline, createdAt, notes, sc
     `<div class="est-meta"><span>📋 ${escHtml(headline)}</span></div>` +
     estimateCards(estimate, settings, showSourceTags, allowEdit) +
     `<div style="height:16px;"></div>`;
+}
+
+function rerenderEstimate() {
+  const ctx = window._renderContext;
+  if (!ctx) return;
+  ctx.estimate = window._exportContext.estimate;
+  renderEstimateBody(ctx);
 }
 
 function estimateCards(estimate, settings, showSourceTags, allowEdit) {
@@ -200,32 +208,59 @@ function estimateCards(estimate, settings, showSourceTags, allowEdit) {
       </div>`;
   }
 
-  // Labor
+  // Labor — recalculate totals using current settings rate
   if (paid) {
+    const defaultRate = settings.laborRate;
+    let laborSub = 0;
+    const laborRows = (estimate.labor || []).map((l, i) => {
+      const rate = (l._customRate != null) ? l._customRate : defaultRate;
+      const lineTotal = parseFloat((l.hours * rate).toFixed(2));
+      laborSub += lineTotal;
+      if (allowEdit) {
+        return `<tr id="labor_row_${i}">
+          <td>${escHtml(l.task)}</td>
+          ${showSourceTags ? `<td><span class="source-tag">${escHtml(l._source||'')}</span></td>` : ''}
+          <td style="text-align:right">${l.hours}</td>
+          <td style="text-align:right">${formatMoney(rate)}/hr</td>
+          <td style="text-align:right"><strong>${formatMoney(lineTotal)}</strong></td>
+          <td style="width:28px;"><button class="scope-del" onclick="editLaborRow(${i})" aria-label="Edit" style="color:var(--ink2);font-size:0.85rem;">✏️</button></td>
+        </tr>`;
+      }
+      return `<tr>
+        <td>${escHtml(l.task)}</td>
+        ${showSourceTags ? `<td><span class="source-tag">${escHtml(l._source||'')}</span></td>` : ''}
+        <td style="text-align:right">${l.hours}</td>
+        <td style="text-align:right">${formatMoney(rate)}/hr</td>
+        <td style="text-align:right"><strong>${formatMoney(lineTotal)}</strong></td>
+      </tr>`;
+    }).join('');
+
+    // Keep totals in sync with displayed values
+    if (estimate.totals) {
+      estimate.totals.labor_subtotal = laborSub;
+      estimate.totals.grand_total = (estimate.totals.materials_subtotal || 0) + laborSub;
+    }
+
+    const labelSpan = (showSourceTags ? 3 : 2) + (allowEdit ? 1 : 0);
     html += `
       <div class="card">
         <div class="card-title">Labor</div>
         <div style="overflow-x:auto;">
-          <table class="est-table">
+          <table class="est-table" id="laborTable">
             <thead><tr>
               <th>Task</th>
               ${showSourceTags ? '<th>Area</th>' : ''}
               <th style="text-align:right">Hrs</th>
               <th style="text-align:right">Rate</th>
               <th style="text-align:right">Total</th>
+              ${allowEdit ? '<th></th>' : ''}
             </tr></thead>
             <tbody>
-              ${(estimate.labor || []).map(l => `
-                <tr>
-                  <td>${escHtml(l.task)}</td>
-                  ${showSourceTags ? `<td><span class="source-tag">${escHtml(l._source||'')}</span></td>` : ''}
-                  <td style="text-align:right">${l.hours}</td>
-                  <td style="text-align:right">${formatMoney(l.rate)}/hr</td>
-                  <td style="text-align:right"><strong>${formatMoney(l.line_total)}</strong></td>
-                </tr>`).join('')}
+              ${laborRows}
               <tr class="subtotal-row">
-                <td colspan="${showSourceTags ? 3 : 2}">Labor Subtotal</td>
-                <td colspan="2">${formatMoney(estimate.totals?.labor_subtotal)}</td>
+                <td colspan="${labelSpan}">Labor Subtotal</td>
+                <td>${formatMoney(laborSub)}</td>
+                ${allowEdit ? '<td></td>' : ''}
               </tr>
             </tbody>
           </table>
@@ -292,6 +327,64 @@ function saveScopeEdits(newScope) {
     ).join('');
   }
   showToast('Saved', 'success');
+}
+
+// ─── Labor Editing ────────────────────────────────────────
+
+function editLaborRow(index) {
+  const l = window._exportContext.estimate.labor[index];
+  const defaultRate = (window._renderContext?.settings || getSettings()).laborRate;
+  const currentRate = l._customRate != null ? l._customRate : defaultRate;
+  const row = document.getElementById('labor_row_' + index);
+  if (!row) return;
+  const colCount = row.cells.length;
+  row.innerHTML = `<td colspan="${colCount}" style="padding:10px 4px;">
+    <div style="font-size:0.8rem;font-weight:600;margin-bottom:8px;color:var(--ink);">${escHtml(l.task)}</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--ink2);">HRS</label>
+        <input type="number" id="edit_hours_${index}" value="${l.hours}" min="0" step="0.5" inputmode="decimal"
+          style="width:68px;font-family:var(--font-mono);font-size:0.9rem;padding:6px 8px;border:1px solid var(--hairline);border-radius:8px;text-align:right;">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--ink2);">$/HR</label>
+        <input type="number" id="edit_rate_${index}" value="${currentRate}" min="0" step="1" inputmode="decimal"
+          style="width:76px;font-family:var(--font-mono);font-size:0.9rem;padding:6px 8px;border:1px solid var(--hairline);border-radius:8px;text-align:right;">
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="saveLaborEdit(${index})">Save</button>
+      <button class="btn btn-outline btn-sm" onclick="rerenderEstimate()">✕</button>
+    </div>
+  </td>`;
+}
+
+function saveLaborEdit(index) {
+  const hours = parseFloat(document.getElementById('edit_hours_' + index)?.value);
+  const rate  = parseFloat(document.getElementById('edit_rate_' + index)?.value);
+  if (isNaN(hours) || hours < 0) { showToast('Enter valid hours', 'error'); return; }
+  if (isNaN(rate)  || rate  < 0) { showToast('Enter valid rate',  'error'); return; }
+
+  const ctx = window._exportContext;
+  const defaultRate = (window._renderContext?.settings || getSettings()).laborRate;
+  ctx.estimate.labor[index] = {
+    ...ctx.estimate.labor[index],
+    hours,
+    rate,
+    _customRate: rate !== defaultRate ? rate : undefined,
+    line_total: parseFloat((hours * rate).toFixed(2)),
+  };
+
+  // Persist to localStorage
+  if (estType === 'room') {
+    const room = getRoomById(projectId, roomId);
+    if (room?.roomEstimate) updateRoom(projectId, roomId, { roomEstimate: { ...room.roomEstimate, labor: ctx.estimate.labor } });
+  } else if (estType === 'photo') {
+    const room = getRoomById(projectId, roomId);
+    const photo = room?.photos.find(p => p.id === photoId);
+    if (photo?.estimate) updateRoomPhoto(projectId, roomId, photoId, { estimate: { ...photo.estimate, labor: ctx.estimate.labor } });
+  }
+
+  rerenderEstimate();
+  showToast('Updated', 'success');
 }
 
 function exportButtons(estimate, settings, isBreakdown) {
