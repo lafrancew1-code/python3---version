@@ -1,4 +1,4 @@
-const CACHE = 'field-estimate-v4';
+const CACHE = 'field-estimate-v5';
 const SHELL = [
   '/',
   '/index.html',
