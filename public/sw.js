@@ -1,4 +1,4 @@
-const CACHE = 'gc-estimator-v2';
+const CACHE = 'gc-estimator-v3';
 const SHELL = [
   '/',
   '/index.html',
