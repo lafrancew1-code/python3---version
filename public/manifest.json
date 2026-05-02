@@ -1,6 +1,6 @@
 {
-  "name": "GC Estimator",
-  "short_name": "GC Est.",
+  "name": "FieldEstimate",
+  "short_name": "FieldEst.",
   "description": "On-site construction estimate generator for general contractors",
   "start_url": "/",
   "display": "standalone",

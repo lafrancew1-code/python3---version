@@ -1,4 +1,4 @@
-const CACHE = 'gc-estimator-v3';
+const CACHE = 'field-estimate-v1';
 const SHELL = [
   '/',
   '/index.html',

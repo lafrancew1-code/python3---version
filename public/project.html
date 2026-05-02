@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <title>Job — GC Estimator</title>
+  <title>Job — FieldEstimate</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!project.gallery) project.gallery = [];
 
   document.getElementById('projectTitle').textContent = project.name;
-  document.title = project.name + ' — GC Estimator';
+  document.title = project.name + ' — FieldEstimate';
   if (!isPaid()) document.getElementById('materialsNavLink').classList.add('nav-locked');
 
   document.getElementById('photoInput').addEventListener('change', onPhotosSelected);
