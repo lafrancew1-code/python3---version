@@ -11,9 +11,8 @@ function getTier() { return localStorage.getItem(TIER_KEY) || 'free'; }
 function setTier(tier) { localStorage.setItem(TIER_KEY, tier); }
 function isPaid() { return getTier() === 'paid' && !!localStorage.getItem(LICENSE_CODE_KEY); }
 function getLicenseEmail() { return localStorage.getItem(LICENSE_EMAIL_KEY) || ''; }
-function activateLicense(email, code) {
+function activateLicense(code) {
   localStorage.setItem(TIER_KEY, 'paid');
-  localStorage.setItem(LICENSE_EMAIL_KEY, email);
   localStorage.setItem(LICENSE_CODE_KEY, code);
 }
 function revokeLicense() {

@@ -50,17 +50,13 @@
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
         <div style="font-size:1.4rem;">⭐</div>
         <div>
-          <div style="font-size:0.9rem;font-weight:700;color:var(--ink);">Upgrade to Pro</div>
+          <div style="font-size:0.9rem;font-weight:700;color:var(--ink);">Upgrade to Pro — $19.99</div>
           <div style="font-family:var(--font-mono);font-size:0.6rem;color:var(--ink2);margin-top:3px;">Full breakdown + custom prices</div>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label" for="licenseEmail">Your Email</label>
-        <input type="email" id="licenseEmail" class="form-input" placeholder="you@example.com" autocomplete="email">
-      </div>
       <div class="form-group" style="margin-bottom:14px;">
-        <label class="form-label" for="licenseCode">Unlock Code</label>
-        <input type="text" id="licenseCode" class="form-input" placeholder="e.g. a3f7c19b2d084e61"
+        <label class="form-label" for="licenseCode">License Key</label>
+        <input type="text" id="licenseCode" class="form-input" placeholder="Paste your Whop license key…"
           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
           style="font-family:var(--font-mono);letter-spacing:0.05em;">
       </div>
@@ -73,7 +69,7 @@
         <div style="font-size:1.4rem;">✅</div>
         <div>
           <div style="font-size:0.9rem;font-weight:700;color:var(--green);">Pro Unlocked</div>
-          <div id="planProEmail" style="font-family:var(--font-mono);font-size:0.6rem;color:var(--ink2);margin-top:3px;"></div>
+          <div id="planProKey" style="font-family:var(--font-mono);font-size:0.6rem;color:var(--ink2);margin-top:3px;"></div>
         </div>
       </div>
       <a href="/materials.html" class="btn btn-secondary" style="width:100%;margin-bottom:10px;">🔩 Manage Material Prices →</a>
@@ -125,7 +121,11 @@ function renderPlanUI() {
   const paid = isPaid();
   document.getElementById('planFree').style.display = paid ? 'none' : 'block';
   document.getElementById('planPro').style.display  = paid ? 'block' : 'none';
-  if (paid) document.getElementById('planProEmail').textContent = getLicenseEmail();
+  if (paid) {
+    const key = localStorage.getItem('gc_license_code') || '';
+    const masked = key.length > 8 ? key.substring(0, 4) + '-••••-••••-' + key.slice(-4) : '••••••••';
+    document.getElementById('planProKey').textContent = 'Key: ' + masked;
+  }
   const ml = document.getElementById('materialsNavLink');
   if (ml) ml.classList.toggle('nav-locked', !paid);
 }
@@ -133,27 +133,25 @@ function renderPlanUI() {
 let unlocking = false;
 async function submitLicense() {
   if (unlocking) return;
-  const email = document.getElementById('licenseEmail').value.trim();
-  const code  = document.getElementById('licenseCode').value.trim();
+  const key   = document.getElementById('licenseCode').value.trim();
   const errEl = document.getElementById('licenseError');
   const btn   = document.getElementById('btnUnlock');
   errEl.style.display = 'none';
-  if (!email) { showLicenseError('Please enter your email address.'); return; }
-  if (!code)  { showLicenseError('Please enter your unlock code.'); return; }
+  if (!key) { showLicenseError('Please enter your license key.'); return; }
   unlocking = true; btn.disabled = true; btn.textContent = 'Checking…';
   try {
     const resp = await fetch('/.netlify/functions/validate-license', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, code }),
+      body: JSON.stringify({ license_key: key }),
     });
     const data = await resp.json();
     if (data.valid) {
-      activateLicense(data.email, code);
+      activateLicense(key);
       renderPlanUI();
       showToast('Pro unlocked! Welcome.', 'success');
     } else {
-      showLicenseError(data.error || 'Invalid email or unlock code.');
+      showLicenseError(data.error || 'Invalid license key.');
     }
   } catch {
     showLicenseError('Network error — check your connection and try again.');

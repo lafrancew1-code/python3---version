@@ -1,4 +1,48 @@
-const crypto = require('crypto');
+const https = require('https');
+
+const WHOP_PRODUCT_ID = 'prod_FhQkubpj4IiKz';
+
+function callWhop(licenseKey, apiKey) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({ license_key: licenseKey, metadata: {} });
+    const req = https.request({
+      hostname: 'api.whop.com',
+      path: '/api/v2/licenses/validate',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    }, (res) => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(body);
+          if (res.statusCode === 200) {
+            // Confirm it belongs to this product if Whop returns product info
+            const productId = parsed.product_id || parsed.membership?.product_id;
+            if (productId && productId !== WHOP_PRODUCT_ID) {
+              resolve({ valid: false, error: 'License not valid for this product' });
+            } else if (parsed.status && parsed.status !== 'active') {
+              resolve({ valid: false, error: 'License is ' + parsed.status });
+            } else {
+              resolve({ valid: true });
+            }
+          } else {
+            resolve({ valid: false, error: parsed.error || parsed.message || 'Invalid license key' });
+          }
+        } catch {
+          resolve({ valid: false, error: 'Invalid response from license server' });
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -8,21 +52,25 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ valid: false, error: 'Method not allowed' }); return; }
 
-  const secret = process.env.LICENSE_SECRET;
-  if (!secret) { res.status(500).json({ valid: false, error: 'Server config error' }); return; }
+  const apiKey = process.env.WHOP_API_KEY;
+  if (!apiKey) { res.status(500).json({ valid: false, error: 'Server config error' }); return; }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-  const { email, code } = body;
-  if (!email || !code) { res.status(400).json({ valid: false, error: 'Email and code required' }); return; }
+  const { license_key } = body;
+  if (!license_key || typeof license_key !== 'string') {
+    res.status(400).json({ valid: false, error: 'License key required' });
+    return;
+  }
 
-  const norm = email.toLowerCase().trim();
-  const expected = crypto.createHmac('sha256', secret).update(norm).digest('hex').substring(0, 16);
-
-  const a = Buffer.from(code.toLowerCase().trim().padEnd(16, '\0'), 'utf8');
-  const b = Buffer.from(expected.padEnd(16, '\0'), 'utf8');
-  let valid = false;
-  try { valid = a.length === b.length && crypto.timingSafeEqual(a, b); } catch {}
-
-  if (valid) { res.status(200).json({ valid: true, email: norm }); }
-  else { res.status(400).json({ valid: false, error: 'Invalid email or code' }); }
+  try {
+    const result = await callWhop(license_key.trim(), apiKey);
+    if (result.valid) {
+      res.status(200).json({ valid: true });
+    } else {
+      res.status(400).json({ valid: false, error: result.error || 'Invalid license key' });
+    }
+  } catch (err) {
+    console.error('Whop validation error:', err.message);
+    res.status(500).json({ valid: false, error: 'Could not reach license server' });
+  }
 };

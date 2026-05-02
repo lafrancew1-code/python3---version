@@ -78,6 +78,47 @@ function callClaude(payload) {
   });
 }
 
+const WHOP_PRODUCT_ID = 'prod_FhQkubpj4IiKz';
+
+function callWhop(licenseKey, apiKey) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({ license_key: licenseKey, metadata: {} });
+    const req = https.request({
+      hostname: 'api.whop.com',
+      path: '/api/v2/licenses/validate',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(body);
+          if (res.statusCode === 200) {
+            const productId = parsed.product_id || parsed.membership?.product_id;
+            if (productId && productId !== WHOP_PRODUCT_ID) {
+              resolve({ valid: false, error: 'License not valid for this product' });
+            } else if (parsed.status && parsed.status !== 'active') {
+              resolve({ valid: false, error: 'License is ' + parsed.status });
+            } else {
+              resolve({ valid: true });
+            }
+          } else {
+            resolve({ valid: false, error: parsed.error || parsed.message || 'Invalid license key' });
+          }
+        } catch { resolve({ valid: false, error: 'Invalid response from license server' }); }
+      });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
 function buildCustomPricesText(customMaterials) {
   if (!customMaterials || !customMaterials.length) return '';
   return '\nCustom material prices to use:\n' +
@@ -192,11 +233,11 @@ const server = http.createServer((req, res) => {
     if (req.method !== 'POST') { res.writeHead(405); res.end('Method Not Allowed'); return; }
     let body = '';
     req.on('data', c => body += c);
-    req.on('end', () => {
-      const secret = process.env.LICENSE_SECRET;
-      if (!secret) {
+    req.on('end', async () => {
+      const apiKey = process.env.WHOP_API_KEY;
+      if (!apiKey) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ valid: false, error: 'LICENSE_SECRET not set in .env.local' }));
+        res.end(JSON.stringify({ valid: false, error: 'WHOP_API_KEY not set in .env.local' }));
         return;
       }
       let reqBody;
@@ -205,25 +246,24 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ valid: false, error: 'Invalid body' }));
         return;
       }
-      const { email, code } = reqBody || {};
-      if (!email || !code) {
+      const { license_key } = reqBody || {};
+      if (!license_key) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ valid: false, error: 'Email and code required' }));
+        res.end(JSON.stringify({ valid: false, error: 'License key required' }));
         return;
       }
-      const crypto = require('crypto');
-      const norm = email.toLowerCase().trim();
-      const expected = crypto.createHmac('sha256', secret).update(norm).digest('hex').substring(0, 16);
-      const a = Buffer.from(code.toLowerCase().trim().padEnd(16, '\0'), 'utf8');
-      const b = Buffer.from(expected.padEnd(16, '\0'), 'utf8');
-      let valid = false;
-      try { valid = a.length === b.length && crypto.timingSafeEqual(a, b); } catch {}
-      if (valid) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ valid: true, email: norm }));
-      } else {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ valid: false, error: 'Invalid email or code' }));
+      try {
+        const result = await callWhop(license_key.trim(), apiKey);
+        if (result.valid) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ valid: true }));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ valid: false, error: result.error || 'Invalid license key' }));
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ valid: false, error: 'Could not reach license server' }));
       }
     });
     return;
