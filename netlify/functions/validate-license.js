@@ -63,6 +63,12 @@ exports.handler = async function (event) {
   const { license_key } = body || {};
   if (!license_key) return { statusCode: 400, headers, body: JSON.stringify({ valid: false, error: 'License key required' }) };
 
+  // Admin bypass
+  const adminKey = process.env.ADMIN_KEY;
+  if (adminKey && license_key.trim() === adminKey) {
+    return { statusCode: 200, headers, body: JSON.stringify({ valid: true }) };
+  }
+
   try {
     const result = await callWhop(license_key.trim(), apiKey);
     if (result.valid) {

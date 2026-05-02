@@ -62,6 +62,13 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Admin bypass
+  const adminKey = process.env.ADMIN_KEY;
+  if (adminKey && license_key.trim() === adminKey) {
+    res.status(200).json({ valid: true });
+    return;
+  }
+
   try {
     const result = await callWhop(license_key.trim(), apiKey);
     if (result.valid) {
