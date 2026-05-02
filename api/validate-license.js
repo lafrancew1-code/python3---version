@@ -64,8 +64,8 @@ module.exports = async (req, res) => {
   }
 
   // Admin bypass
-  const adminKey = process.env.ADMIN_KEY;
-  if (adminKey && license_key.trim() === adminKey) {
+  const adminKey = (process.env.ADMIN_KEY || '').trim();
+  if (adminKey && license_key.trim().toUpperCase() === adminKey.toUpperCase()) {
     res.status(200).json({ valid: true });
     return;
   }

@@ -65,8 +65,8 @@ exports.handler = async function (event) {
   if (!license_key) return { statusCode: 400, headers, body: JSON.stringify({ valid: false, error: 'License key required' }) };
 
   // Admin bypass
-  const adminKey = process.env.ADMIN_KEY;
-  if (adminKey && license_key.trim() === adminKey) {
+  const adminKey = (process.env.ADMIN_KEY || '').trim();
+  if (adminKey && license_key.trim().toUpperCase() === adminKey.toUpperCase()) {
     return { statusCode: 200, headers, body: JSON.stringify({ valid: true }) };
   }
 
