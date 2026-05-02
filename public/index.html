@@ -106,7 +106,7 @@ function renderProjects() {
         ${hasEstimate ? `
         <div class="project-card-actions" onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="window.location.href='/project.html?id=${p.id}'">Open Job</button>
-          <button class="btn btn-primary btn-sm" onclick="window.location.href='/estimate.html?type=project&projectId=${p.id}'">📊 View Estimate</button>
+          <button class="btn btn-primary btn-sm" onclick="window.location.href='/estimate.html?type=project-breakdown&projectId=${p.id}'">📊 View Estimate</button>
         </div>` : ''}
         <button class="project-delete" onclick="confirmDeleteProject(event,'${p.id}')">🗑️</button>
       </div>`;

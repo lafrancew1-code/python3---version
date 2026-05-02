@@ -80,10 +80,15 @@ function renderProjectEstimate(breakdown) {
 
     project.rooms.forEach(room => {
       if (room.photos.length === 0) return;
-      const agg = aggregateEstimates(room.photos);
+      const agg = room.roomEstimate || aggregateEstimates(room.photos);
       grandMat += agg.totals.materials_subtotal;
       grandLab += agg.totals.labor_subtotal;
-      html += `<div class="room-section-header">🚪 ${escHtml(room.name)}</div>`;
+      html += `
+        <div class="room-section-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>🚪 ${escHtml(room.name)}</span>
+          <a href="/estimate.html?type=room&projectId=${projectId}&roomId=${room.id}"
+            class="btn btn-outline btn-sm" style="font-size:0.7rem;">✏️ Edit</a>
+        </div>`;
       html += estimateCards(agg, settings, false, false);
     });
 
