@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>History — GC Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/css/app.css?v=2">
+</head>
+<body>
+
+<header class="app-header">
+  <a href="/index.html" class="icon-btn" title="Back">←</a>
+  <h1>Estimate History</h1>
+</header>
+
+<main class="page-content" id="historyList">
+  <div style="text-align:center;padding:32px;color:var(--ink2);">Loading…</div>
+</main>
+
+<nav class="bottom-nav">
+  <a href="/index.html">
+    <span class="nav-icon">🏠</span>New
+  </a>
+  <a href="/history.html" class="active">
+    <span class="nav-icon">📋</span>History
+  </a>
+  <a href="/settings.html">
+    <span class="nav-icon">⚙️</span>Settings
+  </a>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/settings.js"></script>
+<script src="/js/history.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', renderHistory);
+
+  function renderHistory() {
+    const list = document.getElementById('historyList');
+    const history = getHistory();
+
+    if (history.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <p>No estimates yet.<br>Take a photo to generate your first estimate.</p>
+          <div style="margin-top:20px;">
+            <a href="/index.html" class="btn btn-primary" style="display:inline-flex;width:auto;padding:12px 24px;">
+              📸 New Estimate
+            </a>
+          </div>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = history.map(record => {
+      const total = record.estimate?.totals?.grand_total || 0;
+      const notesText = record.notes
+        ? escHtml(record.notes.substring(0, 60)) + (record.notes.length > 60 ? '…' : '')
+        : 'No notes';
+      const thumb = record.thumbnailDataUrl
+        ? `<img class="history-thumb" src="${record.thumbnailDataUrl}" alt="">`
+        : `<div class="history-thumb-placeholder">🏠</div>`;
+
+      return `
+        <div class="history-item" onclick="window.location.href='/estimate.html?id=${record.id}'">
+          ${thumb}
+          <div class="history-info">
+            <div class="history-total">${formatMoney(total)}</div>
+            <div class="history-notes">${notesText}</div>
+            <div class="history-date">${formatDate(record.createdAt)}</div>
+          </div>
+          <button class="history-delete" onclick="confirmDelete(event,'${record.id}')" title="Delete">🗑️</button>
+        </div>`;
+    }).join('');
+  }
+
+  function confirmDelete(e, id) {
+    e.stopPropagation();
+    if (confirm('Delete this estimate?')) {
+      deleteEstimate(id);
+      renderHistory();
+      showToast('Estimate deleted');
+    }
+  }
+
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  let toastTimer;
+  function showToast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = 'toast'; }, 3000);
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+  }
+</script>
+</body>
+</html>

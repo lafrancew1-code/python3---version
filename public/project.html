@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>Job — GC Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/css/app.css?v=2">
+</head>
+<body>
+
+<header class="app-header">
+  <a href="/index.html" class="icon-btn">←</a>
+  <h1 id="projectTitle">Job</h1>
+  <button class="icon-btn" onclick="renameProject()" title="Rename">✏️</button>
+</header>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tabGallery" onclick="switchTab('gallery')">
+    📷 Photos <span class="tab-badge" id="galleryBadge" style="display:none"></span>
+  </button>
+  <button class="tab-btn" id="tabRooms" onclick="switchTab('rooms')">
+    🚪 Rooms <span class="tab-badge" id="roomsBadge" style="display:none"></span>
+  </button>
+</div>
+
+<main class="page-content has-tabs" id="pageContent"></main>
+
+<!-- FAB changes based on tab -->
+<button class="fab" id="fab" onclick="fabAction()">📷</button>
+
+<!-- Assign bar (shown when photos selected) -->
+<div class="assign-bar" id="assignBar" style="display:none">
+  <span id="assignCount">0 selected</span>
+  <button class="btn btn-primary btn-sm" onclick="showAssignModal()">Assign to Room →</button>
+</div>
+
+<nav class="bottom-nav">
+  <a href="/index.html"><span class="nav-icon">🏗️</span>Jobs</a>
+  <a href="/materials.html" id="materialsNavLink"><span class="nav-icon">🔩</span>Materials</a>
+  <a href="/settings.html"><span class="nav-icon">⚙️</span>Settings</a>
+</nav>
+
+<!-- Hidden multi-file input -->
+<input type="file" id="photoInput" accept="image/*" multiple style="display:none">
+
+<!-- Assign to Room modal -->
+<div class="modal-overlay" id="assignModal" onclick="hideModal(event,'assignModal')">
+  <div class="modal-box">
+    <div class="modal-title">Assign to Room</div>
+    <div id="roomPickerList"></div>
+    <div style="margin-top:12px;border-top:1px solid var(--hairline);padding-top:12px;">
+      <input type="text" id="newRoomInput" class="form-input" placeholder="Or create new room…">
+      <button class="btn btn-secondary" style="margin-top:8px;width:100%" onclick="assignToNewRoom()">
+        + Create Room &amp; Assign
+      </button>
+    </div>
+    <button class="btn btn-outline" style="margin-top:10px;width:100%" onclick="closeModal('assignModal')">Cancel</button>
+  </div>
+</div>
+
+<!-- Add Room modal (rooms tab) -->
+<div class="modal-overlay" id="addRoomModal" onclick="hideModal(event,'addRoomModal')">
+  <div class="modal-box">
+    <div class="modal-title">Add Room / Area</div>
+    <input type="text" id="roomNameInput" class="form-input" placeholder="e.g. Master Bedroom, Kitchen…">
+    <div style="display:flex;gap:10px;margin-top:12px;">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('addRoomModal')">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="addNewRoom()">Add Room</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p id="loadingMsg">Importing photos…</p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/settings.js"></script>
+<script src="/js/projects.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const projectId = params.get('id');
+let project;
+let currentTab = 'gallery';
+let selectedPhotoIds = new Set();
+let _savedFiles = []; // original File objects from last import, for Camera Roll save
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!projectId) { window.location.href = '/index.html'; return; }
+  project = getProjectById(projectId);
+  if (!project) { window.location.href = '/index.html'; return; }
+  if (!project.gallery) project.gallery = [];
+
+  document.getElementById('projectTitle').textContent = project.name;
+  document.title = project.name + ' — GC Estimator';
+  if (!isPaid()) document.getElementById('materialsNavLink').classList.add('nav-locked');
+
+  document.getElementById('photoInput').addEventListener('change', onPhotosSelected);
+  document.getElementById('newRoomInput').addEventListener('keydown', e => { if (e.key==='Enter') assignToNewRoom(); });
+  document.getElementById('roomNameInput').addEventListener('keydown', e => { if (e.key==='Enter') addNewRoom(); });
+
+  switchTab('gallery');
+});
+
+// ─── Tabs ─────────────────────────────────────────────────
+
+function switchTab(tab) {
+  currentTab = tab;
+  selectedPhotoIds.clear();
+  updateAssignBar();
+
+  document.getElementById('tabGallery').classList.toggle('active', tab === 'gallery');
+  document.getElementById('tabRooms').classList.toggle('active', tab === 'rooms');
+  document.getElementById('fab').textContent = tab === 'gallery' ? '📷' : '＋';
+
+  render();
+}
+
+function fabAction() {
+  if (currentTab === 'gallery') {
+    document.getElementById('photoInput').click();
+  } else {
+    openModal('addRoomModal');
+    setTimeout(() => document.getElementById('roomNameInput').focus(), 120);
+  }
+}
+
+// ─── Gallery Tab ──────────────────────────────────────────
+
+function renderGallery() {
+  project = getProjectById(projectId);
+  const gallery = project.gallery || [];
+  const content = document.getElementById('pageContent');
+
+  updateBadge('galleryBadge', gallery.length);
+
+  // Camera Roll save prompt (shown after import if device save is available)
+  const savePrompt = (_savedFiles.length > 0 && canSaveToDevice()) ? `
+    <div class="save-prompt-strip">
+      <span>📥 Save ${_savedFiles.length} photo${_savedFiles.length !== 1 ? 's' : ''} to Camera Roll?</span>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-outline btn-sm" onclick="dismissSavePrompt()">Dismiss</button>
+        <button class="btn btn-primary btn-sm" onclick="saveToDevice()">Save</button>
+      </div>
+    </div>` : '';
+
+  if (gallery.length === 0) {
+    content.innerHTML = savePrompt + `
+      <button class="add-photos-btn" onclick="document.getElementById('photoInput').click()">
+        <span style="font-size:2.5rem;">📷</span>
+        <span style="font-size:1.05rem;font-weight:700;">Add Photos</span>
+        <span style="font-size:0.82rem;color:var(--accent);">Tap to open camera or pick from your library</span>
+      </button>`;
+    return;
+  }
+
+  const selectionMode = selectedPhotoIds.size > 0;
+
+  content.innerHTML = `
+    ${savePrompt}
+    <!-- Always-visible Add More button -->
+    <button class="add-more-strip" onclick="document.getElementById('photoInput').click()">
+      📷 Add More Photos
+    </button>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 8px;">
+      <div style="font-size:0.85rem;color:var(--ink2);">${gallery.length} photo${gallery.length!==1?'s':''} · tap to select</div>
+      ${selectionMode
+        ? `<button class="btn btn-outline btn-sm" onclick="clearSelection()">Clear</button>`
+        : `<button class="btn btn-outline btn-sm" onclick="selectAll()">Select All</button>`}
+    </div>
+    <div class="photo-gallery-grid" id="galleryGrid">
+      ${gallery.map(photo => `
+        <div class="gallery-cell ${selectedPhotoIds.has(photo.id) ? 'selected' : ''}"
+             id="cell_${photo.id}"
+             onclick="toggleSelect('${photo.id}')">
+          <img src="${photo.thumbnailDataUrl}" alt="" loading="lazy">
+          <div class="gallery-check">${selectedPhotoIds.has(photo.id) ? '✓' : ''}</div>
+          <button class="gallery-delete" onclick="deleteGalleryPhoto(event,'${photo.id}')">✕</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+function toggleSelect(id) {
+  if (selectedPhotoIds.has(id)) {
+    selectedPhotoIds.delete(id);
+    document.getElementById('cell_' + id)?.classList.remove('selected');
+  } else {
+    selectedPhotoIds.add(id);
+    document.getElementById('cell_' + id)?.classList.add('selected');
+  }
+  // Update check marks
+  document.querySelectorAll('.gallery-cell').forEach(cell => {
+    const photoId = cell.id.replace('cell_', '');
+    cell.querySelector('.gallery-check').textContent = selectedPhotoIds.has(photoId) ? '✓' : '';
+  });
+  updateAssignBar();
+}
+
+function selectAll() {
+  project = getProjectById(projectId);
+  (project.gallery || []).forEach(p => selectedPhotoIds.add(p.id));
+  render();
+}
+
+function clearSelection() {
+  selectedPhotoIds.clear();
+  updateAssignBar();
+  render();
+}
+
+function updateAssignBar() {
+  const bar = document.getElementById('assignBar');
+  const count = selectedPhotoIds.size;
+  if (count > 0) {
+    bar.style.display = 'flex';
+    document.getElementById('assignCount').textContent = count + ' photo' + (count !== 1 ? 's' : '') + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function deleteGalleryPhoto(e, id) {
+  e.stopPropagation();
+  if (confirm('Remove this photo?')) {
+    removeGalleryPhoto(projectId, id);
+    selectedPhotoIds.delete(id);
+    updateAssignBar();
+    render();
+  }
+}
+
+// ─── Photo Import ─────────────────────────────────────────
+
+async function onPhotosSelected(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+
+  const loadingMsg = document.getElementById('loadingMsg');
+  document.getElementById('loadingOverlay').classList.add('active');
+
+  const photos = [];
+  const savedFiles = []; // originals that made it into the app
+  let failed = 0;
+
+  // Process one at a time — saves each photo immediately so a later failure
+  // doesn't wipe out photos already captured
+  for (let i = 0; i < files.length; i++) {
+    loadingMsg.innerHTML =
+      `Saving photo ${i + 1} of ${files.length}…<br>` +
+      `<small style="opacity:0.7">${photos.length} saved so far</small>`;
+    try {
+      const dataUrl = await readFile(files[i]);
+      // 1024px is plenty for Claude and uses ~60% less storage than 1600px
+      const { dataUrl: thumbUrl } = await compressImage(dataUrl, 200, 0.7);
+      const { base64 } = await compressImage(dataUrl, 1024, 0.82);
+
+      const photo = {
+        id: 'gph_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        thumbnailDataUrl: thumbUrl,
+        fullBase64: base64,
+        mimeType: 'image/jpeg',
+        capturedAt: new Date().toISOString()
+      };
+
+      // Save each photo individually so we catch quota errors early
+      const saved = addGalleryPhoto(projectId, photo);
+      if (saved) {
+        photos.push(photo);
+        savedFiles.push(files[i]);
+      } else {
+        failed++;
+        loadingMsg.innerHTML =
+          `⚠️ Storage full — saved ${photos.length} of ${files.length} photos.<br>` +
+          `<small>Delete old jobs to free space.</small>`;
+        await new Promise(r => setTimeout(r, 2000));
+        break; // stop trying, storage is full
+      }
+    } catch (err) {
+      failed++;
+    }
+  }
+
+  document.getElementById('loadingOverlay').classList.remove('active');
+  e.target.value = '';
+
+  if (photos.length) {
+    const msg = failed > 0
+      ? `${photos.length} saved — storage full, ${failed} skipped`
+      : `${photos.length} photo${photos.length !== 1 ? 's' : ''} added!`;
+    showToast(msg, failed > 0 ? 'error' : 'success');
+    // Offer Camera Roll save for any newly imported photos
+    _savedFiles = savedFiles;
+    switchTab('gallery');
+  } else if (failed > 0) {
+    showToast('Could not save photos — storage may be full', 'error');
+  }
+}
+
+// ─── Save to Device (Camera Roll) ────────────────────────
+
+function canSaveToDevice() {
+  return typeof navigator.canShare === 'function' || typeof navigator.share === 'function';
+}
+
+async function saveToDevice() {
+  const files = _savedFiles.slice();
+  _savedFiles = [];
+  render();
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: 'Job Photos' });
+    } else {
+      // Fallback: trigger individual downloads
+      files.forEach((file, i) => {
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `photo_${Date.now()}_${i + 1}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') showToast('Could not save to device', 'error');
+  }
+}
+
+function dismissSavePrompt() {
+  _savedFiles = [];
+  render();
+}
+
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── Assign to Room ───────────────────────────────────────
+
+function showAssignModal() {
+  if (selectedPhotoIds.size === 0) return;
+  project = getProjectById(projectId);
+
+  const list = document.getElementById('roomPickerList');
+  if (project.rooms.length === 0) {
+    list.innerHTML = '<p style="color:var(--ink2);font-size:0.875rem;margin-bottom:8px;">No rooms yet — create one below.</p>';
+  } else {
+    list.innerHTML = project.rooms.map(r => `
+      <button class="room-picker-btn" onclick="assignToExistingRoom('${r.id}')">
+        🚪 ${escHtml(r.name)}
+        <span style="color:var(--ink2);font-size:0.8rem;">${r.photos.length} photo${r.photos.length!==1?'s':''}</span>
+      </button>`).join('');
+  }
+
+  document.getElementById('newRoomInput').value = '';
+  openModal('assignModal');
+}
+
+function assignToExistingRoom(roomId) {
+  const ids = Array.from(selectedPhotoIds);
+  assignPhotosToRoom(projectId, ids, roomId);
+  selectedPhotoIds.clear();
+  closeModal('assignModal');
+  updateAssignBar();
+  const room = getRoomById(projectId, roomId);
+  showToast(`${ids.length} photo${ids.length!==1?'s':''} added to ${room.name}`, 'success');
+  render();
+}
+
+function assignToNewRoom() {
+  const name = document.getElementById('newRoomInput').value.trim();
+  if (!name) { showToast('Enter a room name', 'error'); return; }
+  const room = addRoom(projectId, name);
+  assignToExistingRoom(room.id);
+}
+
+// ─── Rooms Tab ────────────────────────────────────────────
+
+function renderRooms() {
+  project = getProjectById(projectId);
+  const content = document.getElementById('pageContent');
+  const totalPhotos = project.rooms.reduce((n, r) => n + r.photos.length, 0);
+  const analyzedPhotos = project.rooms.reduce((n, r) => n + r.photos.filter(p => p.analyzed).length, 0);
+
+  updateBadge('roomsBadge', project.rooms.length);
+
+  let html = '';
+
+  // Estimate buttons
+  if (analyzedPhotos > 0) {
+    const totals = projectTotals(project);
+    html += `
+      <div class="summary-bar" style="margin-bottom:14px;">
+        <div class="summary-item"><span class="summary-label">Rooms</span><span class="summary-val">${project.rooms.length}</span></div>
+        <div class="summary-item"><span class="summary-label">Analyzed</span><span class="summary-val">${analyzedPhotos}/${totalPhotos}</span></div>
+        <div class="summary-item"><span class="summary-label">Total Est.</span><span class="summary-val">${totals.grand_total > 0 ? formatMoney(totals.grand_total) : '—'}</span></div>
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">Generate Estimate</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button class="btn btn-primary" onclick="goToEstimate('project')">📊 Full Project Estimate</button>
+          <button class="btn btn-secondary" onclick="goToEstimate('project-breakdown')">🏠 Estimate by Room</button>
+        </div>
+      </div>`;
+  }
+
+  if (project.rooms.length === 0) {
+    html += `
+      <div class="empty-state">
+        <div class="empty-icon">🚪</div>
+        <p>No rooms yet.<br>First add photos in the <strong>Photos</strong> tab, then assign them to rooms.</p>
+      </div>`;
+  } else {
+    html += project.rooms.map(room => {
+      const analyzed = room.photos.filter(p => p.analyzed).length;
+      const total = analyzed > 0 ? aggregateEstimates(room.photos).totals.grand_total : 0;
+      const statusColor = room.photos.length === 0 ? 'var(--ink2)'
+        : analyzed === room.photos.length ? 'var(--green)' : 'var(--amber)';
+      const statusLabel = room.photos.length === 0 ? 'No photos'
+        : analyzed === room.photos.length ? 'Analyzed'
+        : analyzed > 0 ? `${analyzed}/${room.photos.length} analyzed`
+        : `${room.photos.length} photo${room.photos.length!==1?'s':''} · not analyzed`;
+
+      return `
+        <div class="room-card" onclick="goToRoom('${room.id}')">
+          <div class="room-card-left">
+            <div class="room-icon">🚪</div>
+            <div class="room-info">
+              <div class="room-name">${escHtml(room.name)}</div>
+              <div class="room-meta" style="color:${statusColor}">${statusLabel}${total > 0 ? ' · ' + formatMoney(total) : ''}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="color:var(--ink2);font-size:1.2rem;">›</span>
+            <button class="history-delete" onclick="confirmDeleteRoom(event,'${room.id}')">🗑️</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  content.innerHTML = html;
+}
+
+function render() {
+  if (currentTab === 'gallery') renderGallery();
+  else renderRooms();
+}
+
+// ─── Navigation ───────────────────────────────────────────
+
+function goToRoom(roomId) {
+  window.location.href = `/room.html?projectId=${projectId}&roomId=${roomId}`;
+}
+
+function goToEstimate(type) {
+  window.location.href = `/estimate.html?type=${type}&projectId=${projectId}`;
+}
+
+// ─── Helpers ─────────────────────────────────────────────
+
+function updateBadge(id, count) {
+  const el = document.getElementById(id);
+  if (count > 0) { el.textContent = count; el.style.display = 'inline-block'; }
+  else el.style.display = 'none';
+}
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function hideModal(e, id) { if (e.target.id === id) closeModal(id); }
+
+function addNewRoom() {
+  const name = document.getElementById('roomNameInput').value.trim();
+  if (!name) { showToast('Enter a room name', 'error'); return; }
+  addRoom(projectId, name);
+  closeModal('addRoomModal');
+  document.getElementById('roomNameInput').value = '';
+  render();
+  showToast('Room added', 'success');
+}
+
+function renameProject() {
+  project = getProjectById(projectId);
+  const name = prompt('Rename job:', project.name);
+  if (name && name.trim()) {
+    updateProject(projectId, { name: name.trim() });
+    document.getElementById('projectTitle').textContent = name.trim();
+    project = getProjectById(projectId);
+  }
+}
+
+function confirmDeleteRoom(e, roomId) {
+  e.stopPropagation();
+  if (confirm('Delete this room? Photos will return to the gallery.')) {
+    deleteRoom(projectId, roomId);
+    render();
+    showToast('Room deleted — photos returned to gallery');
+  }
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3500);
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+</script>
+</body>
+</html>

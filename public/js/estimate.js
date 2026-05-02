@@ -1,0 +1,443 @@
+const params = new URLSearchParams(window.location.search);
+const estType = params.get('type');       // 'photo' | 'room' | 'project' | 'project-breakdown'
+const projectId = params.get('projectId');
+const roomId = params.get('roomId');
+const photoId = params.get('photoId');
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!isPaid()) document.getElementById('materialsNavLink').classList.add('nav-locked');
+
+  if (estType === 'photo') renderPhotoEstimate();
+  else if (estType === 'room') renderRoomEstimate();
+  else if (estType === 'project') renderProjectEstimate(false);
+  else if (estType === 'project-breakdown') renderProjectEstimate(true);
+  else document.getElementById('estimateContent').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Unknown estimate type.</p></div>';
+});
+
+// ─── Photo Estimate ───────────────────────────────────────
+
+function renderPhotoEstimate() {
+  const project = getProjectById(projectId);
+  const room = getRoomById(projectId, roomId);
+  const photo = room?.photos.find(p => p.id === photoId);
+
+  if (!photo) { notFound(); return; }
+
+  document.getElementById('backBtn').href = `/room.html?projectId=${projectId}&roomId=${roomId}`;
+  document.getElementById('pageTitle').textContent = photo.label || 'Photo Estimate';
+
+  renderEstimateBody({
+    estimate: photo.estimate,
+    settings: photo.settings || getSettings(),
+    headline: `${project?.name} › ${room?.name} › ${photo.label || 'Photo'}`,
+    createdAt: photo.createdAt,
+    notes: photo.notes,
+    scope: 'photo'
+  });
+}
+
+// ─── Room Estimate ────────────────────────────────────────
+
+function renderRoomEstimate() {
+  const project = getProjectById(projectId);
+  const room = getRoomById(projectId, roomId);
+  if (!room || room.photos.length === 0) { notFound(); return; }
+
+  document.getElementById('backBtn').href = `/room.html?projectId=${projectId}&roomId=${roomId}`;
+  document.getElementById('pageTitle').textContent = room.name + ' Estimate';
+
+  // Prefer the unified room estimate from batch analysis if available
+  const agg = room.roomEstimate || aggregateEstimates(room.photos);
+  const settings = getSettings();
+
+  renderEstimateBody({
+    estimate: agg,
+    settings,
+    headline: `${project?.name} › ${room.name}`,
+    createdAt: new Date().toISOString(),
+    notes: `Compiled from ${room.photos.length} photo${room.photos.length !== 1 ? 's' : ''}.`,
+    scope: 'room',
+    showSourceTags: true
+  });
+}
+
+// ─── Project Estimate ─────────────────────────────────────
+
+function renderProjectEstimate(breakdown) {
+  const project = getProjectById(projectId);
+  if (!project) { notFound(); return; }
+
+  document.getElementById('backBtn').href = `/project.html?id=${projectId}`;
+  document.getElementById('pageTitle').textContent = breakdown ? 'Estimate by Room' : 'Full Project Estimate';
+
+  const settings = getSettings();
+
+  if (breakdown) {
+    // Room-by-room breakdown
+    let html = exportButtons(null, settings, true) + `<div class="est-meta">📋 ${project.name}</div>`;
+
+    let grandMat = 0, grandLab = 0;
+
+    project.rooms.forEach(room => {
+      if (room.photos.length === 0) return;
+      const agg = aggregateEstimates(room.photos);
+      grandMat += agg.totals.materials_subtotal;
+      grandLab += agg.totals.labor_subtotal;
+      html += `<div class="room-section-header">🚪 ${escHtml(room.name)}</div>`;
+      html += estimateCards(agg, settings, false, false);
+    });
+
+    html += `
+      <div class="totals-box">
+        <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;opacity:0.7;margin-bottom:8px;">Full Project</div>
+        <div class="totals-row"><span>Materials</span><span>${formatMoney(grandMat)}</span></div>
+        <div class="totals-row"><span>Labor</span><span>${formatMoney(grandLab)}</span></div>
+        <div class="totals-row grand"><span>GRAND TOTAL</span><span>${formatMoney(grandMat + grandLab)}</span></div>
+      </div>`;
+
+    html += `<div style="height:16px;"></div>`;
+    document.getElementById('estimateContent').innerHTML = html;
+    window._exportContext = { project, settings, breakdown: true };
+
+  } else {
+    // All photos merged into one estimate
+    const allPhotos = project.rooms.flatMap(r => r.photos);
+    const agg = aggregateEstimates(allPhotos);
+    const photoCount = allPhotos.length;
+    renderEstimateBody({
+      estimate: agg,
+      settings,
+      headline: project.name,
+      createdAt: new Date().toISOString(),
+      notes: `Compiled from ${project.rooms.length} rooms, ${photoCount} photos.`,
+      scope: 'project'
+    });
+    window._exportContext = { project, settings, breakdown: false };
+  }
+}
+
+// ─── Render Estimate Body ─────────────────────────────────
+
+function renderEstimateBody({ estimate, settings, headline, createdAt, notes, scope, showSourceTags }) {
+  window._exportContext = { estimate, settings, headline, createdAt, notes };
+
+  const allowEdit = scope === 'photo' || scope === 'room';
+  const content = document.getElementById('estimateContent');
+  content.innerHTML =
+    exportButtons(estimate, settings) +
+    `<div class="est-meta"><span>📋 ${escHtml(headline)}</span></div>` +
+    estimateCards(estimate, settings, showSourceTags, allowEdit) +
+    `<div style="height:16px;"></div>`;
+}
+
+function estimateCards(estimate, settings, showSourceTags, allowEdit) {
+  const paid = isPaid();
+  let html = '';
+
+  // Scope of works
+  const scopeItems = estimate.scope_of_works || [];
+  let scopeRows = '';
+  if (scopeItems.length === 0) {
+    scopeRows = '<li style="color:var(--ink2)">No scope items.</li>';
+  } else {
+    scopeRows = scopeItems.map((s, i) => allowEdit
+      ? `<li class="scope-item"><span>${escHtml(s)}</span><button class="scope-del" onclick="removeScopeItem(${i})" aria-label="Remove">✕</button></li>`
+      : `<li>${escHtml(s)}</li>`
+    ).join('');
+  }
+  html += `
+    <div class="card">
+      <div class="card-title">Scope of Works</div>
+      <ul class="scope-list" id="scopeList">${scopeRows}</ul>
+      ${allowEdit ? `<div class="scope-add-row">
+        <input type="text" id="scopeInput" class="form-input" placeholder="Add scope item…"
+          style="margin-bottom:0;" onkeydown="if(event.key==='Enter')addScopeItem()">
+        <button class="btn btn-secondary btn-sm" onclick="addScopeItem()">Add</button>
+      </div>` : ''}
+    </div>`;
+
+  // Materials
+  if (paid) {
+    html += `
+      <div class="card">
+        <div class="card-title">Materials</div>
+        <div style="overflow-x:auto;">
+          <table class="est-table">
+            <thead><tr>
+              <th>Item</th>
+              ${showSourceTags ? '<th>Area</th>' : ''}
+              <th style="text-align:right">Qty</th>
+              <th style="text-align:right">Unit $</th>
+              <th style="text-align:right">Total</th>
+            </tr></thead>
+            <tbody>
+              ${(estimate.materials || []).map(m => `
+                <tr>
+                  <td>${escHtml(m.item)}<br><small style="color:var(--ink2)">${escHtml(m.unit)}</small></td>
+                  ${showSourceTags ? `<td><span class="source-tag">${escHtml(m._source||'')}</span></td>` : ''}
+                  <td style="text-align:right">${m.quantity}</td>
+                  <td style="text-align:right">${formatMoney(m.unit_cost)}</td>
+                  <td style="text-align:right"><strong>${formatMoney(m.line_total)}</strong></td>
+                </tr>`).join('')}
+              <tr class="subtotal-row">
+                <td colspan="${showSourceTags ? 4 : 3}">Materials Subtotal</td>
+                <td>${formatMoney(estimate.totals?.materials_subtotal)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="font-size:0.75rem;color:var(--ink2);margin-top:6px;">Includes ${settings.markupPct}% markup</div>
+      </div>`;
+  } else {
+    html += `
+      <div class="card upgrade-card">
+        <div class="card-title">Materials Breakdown</div>
+        <div class="upgrade-lock">
+          <div class="upgrade-icon">🔒</div>
+          <div class="upgrade-text">Itemized materials list is a <strong>Pro feature</strong>.</div>
+          <a href="/settings.html" class="btn btn-primary" style="width:auto;padding:10px 20px;font-size:0.9rem;">Upgrade to Pro →</a>
+        </div>
+      </div>`;
+  }
+
+  // Labor
+  if (paid) {
+    html += `
+      <div class="card">
+        <div class="card-title">Labor</div>
+        <div style="overflow-x:auto;">
+          <table class="est-table">
+            <thead><tr>
+              <th>Task</th>
+              ${showSourceTags ? '<th>Area</th>' : ''}
+              <th style="text-align:right">Hrs</th>
+              <th style="text-align:right">Rate</th>
+              <th style="text-align:right">Total</th>
+            </tr></thead>
+            <tbody>
+              ${(estimate.labor || []).map(l => `
+                <tr>
+                  <td>${escHtml(l.task)}</td>
+                  ${showSourceTags ? `<td><span class="source-tag">${escHtml(l._source||'')}</span></td>` : ''}
+                  <td style="text-align:right">${l.hours}</td>
+                  <td style="text-align:right">${formatMoney(l.rate)}/hr</td>
+                  <td style="text-align:right"><strong>${formatMoney(l.line_total)}</strong></td>
+                </tr>`).join('')}
+              <tr class="subtotal-row">
+                <td colspan="${showSourceTags ? 3 : 2}">Labor Subtotal</td>
+                <td colspan="2">${formatMoney(estimate.totals?.labor_subtotal)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  // Totals (always visible)
+  html += `
+    <div class="totals-box">
+      <div class="totals-row"><span>Materials</span><span>${formatMoney(estimate.totals?.materials_subtotal)}</span></div>
+      <div class="totals-row"><span>Labor</span><span>${formatMoney(estimate.totals?.labor_subtotal)}</span></div>
+      <div class="totals-row grand"><span>GRAND TOTAL</span><span>${formatMoney(estimate.totals?.grand_total)}</span></div>
+    </div>`;
+
+  if (estimate.estimate_notes) {
+    html += `<div class="section-gap"></div><div class="notes-box"><strong>⚠️ Notes</strong><br>${escHtml(estimate.estimate_notes)}</div>`;
+  }
+
+  return html;
+}
+
+// ─── Scope Editing ────────────────────────────────────────
+
+function removeScopeItem(index) {
+  const scope = [...(window._exportContext.estimate.scope_of_works || [])];
+  scope.splice(index, 1);
+  saveScopeEdits(scope);
+}
+
+function addScopeItem() {
+  const input = document.getElementById('scopeInput');
+  const text = input.value.trim();
+  if (!text) return;
+  const scope = [...(window._exportContext.estimate.scope_of_works || []), text];
+  input.value = '';
+  saveScopeEdits(scope);
+}
+
+function saveScopeEdits(newScope) {
+  window._exportContext.estimate.scope_of_works = newScope;
+
+  if (estType === 'room') {
+    const room = getRoomById(projectId, roomId);
+    if (room?.roomEstimate) {
+      updateRoom(projectId, roomId, { roomEstimate: { ...room.roomEstimate, scope_of_works: newScope } });
+    }
+  } else if (estType === 'photo') {
+    const room = getRoomById(projectId, roomId);
+    const photo = room?.photos.find(p => p.id === photoId);
+    if (photo?.estimate) {
+      updateRoomPhoto(projectId, roomId, photoId, { estimate: { ...photo.estimate, scope_of_works: newScope } });
+    }
+  }
+
+  // Re-render the list in-place
+  const list = document.getElementById('scopeList');
+  if (!list) return;
+  if (newScope.length === 0) {
+    list.innerHTML = '<li style="color:var(--ink2)">No scope items.</li>';
+  } else {
+    list.innerHTML = newScope.map((s, i) =>
+      `<li class="scope-item"><span>${escHtml(s)}</span><button class="scope-del" onclick="removeScopeItem(${i})" aria-label="Remove">✕</button></li>`
+    ).join('');
+  }
+  showToast('Saved', 'success');
+}
+
+function exportButtons(estimate, settings, isBreakdown) {
+  return `
+    <div class="export-row" style="margin-bottom:14px;">
+      <button class="btn btn-secondary btn-sm" onclick="doExportCSV()">⬇️ Export CSV</button>
+      <button class="btn btn-outline btn-sm" onclick="doCopyText()">📋 Copy Text</button>
+    </div>`;
+}
+
+// ─── Export ───────────────────────────────────────────────
+
+function doExportCSV() {
+  const ctx = window._exportContext;
+  if (!ctx) return;
+  const paid = isPaid();
+
+  let csv = '';
+  const q = v => { const s = String(v==null?'':v); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+  const row = cols => cols.map(q).join(',') + '\n';
+
+  if (ctx.breakdown) {
+    csv += row(['FULL PROJECT ESTIMATE — BY ROOM']);
+    csv += row(['Job', ctx.project.name]);
+    csv += row(['Date', formatDate(new Date().toISOString())]);
+    csv += row([]);
+    ctx.project.rooms.forEach(room => {
+      if (!room.photos.length) return;
+      const agg = aggregateEstimates(room.photos);
+      csv += row(['ROOM: ' + room.name]);
+      csv += row(['Scope of Works']);
+      agg.scope_of_works.forEach((s, i) => { csv += row([i+1+'.', s]); });
+      if (paid) {
+        csv += row([]);
+        csv += row(['MATERIALS','Qty','Unit','Unit Cost','Line Total']);
+        agg.materials.forEach(m => { csv += row([m.item, m.quantity, m.unit, m.unit_cost, m.line_total]); });
+        csv += row(['Labor']);
+        agg.labor.forEach(l => { csv += row([l.task, l.hours + ' hrs', '$'+l.rate+'/hr', '', l.line_total]); });
+      }
+      csv += row(['Room Total','','','', agg.totals.grand_total]);
+      csv += row([]);
+    });
+    const t = projectTotals(ctx.project);
+    csv += row(['GRAND TOTAL','','','', t.grand_total]);
+  } else {
+    const { estimate, settings, headline } = ctx;
+    csv += row(['CONSTRUCTION ESTIMATE']);
+    csv += row(['Job', headline]);
+    csv += row(['Date', formatDate(new Date().toISOString())]);
+    csv += row([]);
+    csv += row(['SCOPE OF WORKS']);
+    (estimate.scope_of_works||[]).forEach((s,i) => { csv += row([i+1+'.', s]); });
+    csv += row([]);
+    if (paid) {
+      csv += row(['MATERIALS','Qty','Unit','Unit Cost','Line Total']);
+      (estimate.materials||[]).forEach(m => { csv += row([m.item, m.quantity, m.unit, m.unit_cost, m.line_total]); });
+      csv += row(['Materials Subtotal','','','', estimate.totals?.materials_subtotal||0]);
+      csv += row([]);
+      csv += row(['LABOR','Hours','Rate','','Line Total']);
+      (estimate.labor||[]).forEach(l => { csv += row([l.task, l.hours, '$'+l.rate+'/hr','', l.line_total]); });
+      csv += row(['Labor Subtotal','','','', estimate.totals?.labor_subtotal||0]);
+      csv += row([]);
+    }
+    csv += row(['GRAND TOTAL','','','', estimate.totals?.grand_total||0]);
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'estimate_' + Date.now() + '.csv'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV downloaded — open in Google Sheets', 'success');
+}
+
+function doCopyText() {
+  const ctx = window._exportContext;
+  if (!ctx) return;
+  const paid = isPaid();
+  const line = '─'.repeat(56);
+  const pad = (s,n) => String(s).substring(0,n).padEnd(n);
+  const rpad = (s,n) => String(s).padStart(n);
+  let text = '';
+
+  if (ctx.breakdown) {
+    text = `CONSTRUCTION ESTIMATE — BY ROOM\nJob: ${ctx.project.name}\nDate: ${formatDate(new Date().toISOString())}\n\n`;
+    ctx.project.rooms.forEach(room => {
+      if (!room.photos.length) return;
+      const agg = aggregateEstimates(room.photos);
+      text += `${line}\nROOM: ${room.name}\n${line}\n`;
+      text += 'SCOPE OF WORKS\n';
+      agg.scope_of_works.forEach((s,i) => { text += `${i+1}. ${s}\n`; });
+      text += `Room Total: ${formatMoney(agg.totals.grand_total)}\n\n`;
+    });
+    const t = projectTotals(ctx.project);
+    text += `${line}\nGRAND TOTAL: ${formatMoney(t.grand_total)}\n`;
+  } else {
+    const { estimate, headline } = ctx;
+    text = `CONSTRUCTION ESTIMATE\n${headline}\nDate: ${formatDate(new Date().toISOString())}\n\n`;
+    text += `SCOPE OF WORKS\n${line}\n`;
+    (estimate.scope_of_works||[]).forEach((s,i) => { text += `${i+1}. ${s}\n`; });
+    if (paid) {
+      text += `\nMATERIALS\n${line}\n`;
+      text += pad('Item',32)+rpad('Qty',5)+rpad('Unit $',10)+rpad('Total',10)+'\n';
+      (estimate.materials||[]).forEach(m => {
+        text += pad(m.item,32)+rpad(m.quantity,5)+rpad(formatMoney(m.unit_cost),10)+rpad(formatMoney(m.line_total),10)+'\n';
+      });
+      text += pad('Subtotal',47)+rpad(formatMoney(estimate.totals?.materials_subtotal),10)+'\n\n';
+      text += `LABOR\n${line}\n`;
+      (estimate.labor||[]).forEach(l => {
+        text += pad(l.task,32)+rpad(l.hours+'h',5)+rpad('$'+l.rate+'/hr',10)+rpad(formatMoney(l.line_total),10)+'\n';
+      });
+      text += pad('Subtotal',47)+rpad(formatMoney(estimate.totals?.labor_subtotal),10)+'\n\n';
+    }
+    text += `${line}\nGRAND TOTAL: ${formatMoney(estimate.totals?.grand_total)}\n`;
+    if (estimate.estimate_notes) text += `\nNotes: ${estimate.estimate_notes}\n`;
+  }
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => showToast('Copied! Paste into Google Docs','success')).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); showToast('Copied! Paste into Google Docs','success'); }
+  catch { showToast('Copy failed — please copy manually','error'); }
+  document.body.removeChild(ta);
+}
+
+function notFound() {
+  document.getElementById('estimateContent').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Estimate not found.</p></div>';
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3500);
+}

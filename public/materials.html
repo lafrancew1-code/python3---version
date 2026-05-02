@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>Materials — GC Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/css/app.css?v=2">
+</head>
+<body>
+
+<header class="app-header">
+  <a href="/index.html" class="icon-btn">←</a>
+  <h1>🔩 Materials</h1>
+</header>
+
+<main class="page-content" id="pageContent"></main>
+
+<nav class="bottom-nav">
+  <a href="/index.html">
+    <span class="nav-icon">🏗️</span>Jobs
+  </a>
+  <a href="/materials.html" class="active">
+    <span class="nav-icon">🔩</span>Materials
+  </a>
+  <a href="/settings.html">
+    <span class="nav-icon">⚙️</span>Settings
+  </a>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/settings.js"></script>
+<script src="/js/projects.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', render);
+
+function render() {
+  const content = document.getElementById('pageContent');
+  const paid = isPaid();
+
+  if (!paid) {
+    content.innerHTML = `
+      <div class="card upgrade-card" style="margin-top:8px;">
+        <div class="upgrade-lock">
+          <div class="upgrade-icon">🔒</div>
+          <div class="upgrade-text">
+            <strong>Custom Material Prices</strong> is a Pro feature.<br><br>
+            Set your own prices for common materials (plywood, sheetrock, paint, etc.) and the AI will use your actual costs in every estimate.
+          </div>
+          <a href="/settings.html" class="btn btn-primary" style="width:auto;padding:12px 24px;">
+            Upgrade to Pro →
+          </a>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const materials = getMaterialsDb();
+  let html = `
+    <div class="card">
+      <div class="card-title">Add Material</div>
+      <div class="form-group">
+        <label class="form-label">Material Name</label>
+        <input type="text" id="matName" class="form-input" placeholder="e.g. 5/8 in. Drywall Sheet (4x8)">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Your Cost ($)</label>
+          <input type="number" id="matCost" class="form-input" min="0" step="0.01" placeholder="12.50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Unit</label>
+          <input type="text" id="matUnit" class="form-input" placeholder="sheet, gallon, LF…">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="addMaterial()">+ Add to List</button>
+    </div>`;
+
+  if (materials.length > 0) {
+    html += `
+      <div class="card">
+        <div class="card-title">Your Price List (${materials.length} items)</div>
+        <p style="font-size:0.8rem;color:var(--ink2);margin-bottom:12px;">
+          These prices override AI estimates and are sent with every analysis.
+        </p>
+        ${materials.map(m => `
+          <div class="material-row">
+            <div class="material-info">
+              <div class="material-name">${escHtml(m.name)}</div>
+              <div class="material-price">${formatMoney(m.cost)} / ${escHtml(m.unit)}</div>
+            </div>
+            <button class="history-delete" onclick="removeMaterial('${m.id}')">🗑️</button>
+          </div>`).join('')}
+      </div>`;
+  } else {
+    html += `
+      <div class="empty-state">
+        <div class="empty-icon">🔩</div>
+        <p>No custom prices yet.<br>Add materials above and the AI will use your prices in every estimate.</p>
+      </div>`;
+  }
+
+  content.innerHTML = html;
+}
+
+function addMaterial() {
+  const name = document.getElementById('matName').value.trim();
+  const cost = parseFloat(document.getElementById('matCost').value);
+  const unit = document.getElementById('matUnit').value.trim();
+
+  if (!name) { showToast('Enter a material name','error'); return; }
+  if (isNaN(cost) || cost < 0) { showToast('Enter a valid cost','error'); return; }
+  if (!unit) { showToast('Enter a unit (sheet, gallon, LF…)','error'); return; }
+
+  upsertMaterial({ id: 'mat_'+Date.now(), name, cost, unit });
+  showToast('Material added!','success');
+  render();
+}
+
+function removeMaterial(id) {
+  if (confirm('Remove this material from your price list?')) {
+    deleteMaterial(id);
+    render();
+    showToast('Removed');
+  }
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3000);
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="GC Estimator">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>GC Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/css/app.css?v=2">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>🏗️ GC Estimator</h1>
+  <a href="/settings.html" class="icon-btn" title="Settings">⚙️</a>
+</header>
+
+<main class="page-content" id="projectList">
+  <div style="text-align:center;padding:32px;color:var(--ink2);">Loading…</div>
+</main>
+
+<!-- New Project FAB -->
+<button class="fab" id="newProjectBtn" onclick="showNewProjectModal()">＋</button>
+
+<nav class="bottom-nav">
+  <a href="/index.html" class="active">
+    <span class="nav-icon">🏗️</span>Jobs
+  </a>
+  <a href="/materials.html" id="materialsNavLink">
+    <span class="nav-icon">🔩</span>Materials
+  </a>
+  <a href="/settings.html">
+    <span class="nav-icon">⚙️</span>Settings
+  </a>
+</nav>
+
+<!-- New Project Modal -->
+<div class="modal-overlay" id="newProjectModal" onclick="hideModal(event)">
+  <div class="modal-box">
+    <div class="modal-title">New Job</div>
+    <div class="form-group">
+      <label class="form-label" for="projectNameInput">Job Name / Address</label>
+      <input type="text" id="projectNameInput" class="form-input"
+        placeholder="e.g. 123 Main St - Full Reno"
+        autocomplete="off">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="createNewProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/settings.js"></script>
+<script src="/js/projects.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  renderProjects();
+  // Lock materials nav for free tier
+  if (!isPaid()) {
+    document.getElementById('materialsNavLink').classList.add('nav-locked');
+  }
+});
+
+function renderProjects() {
+  const list = document.getElementById('projectList');
+  const projects = getProjects();
+
+  if (projects.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🏗️</div>
+        <p>No jobs yet.<br>Tap <strong>＋</strong> to start a new job.</p>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = projects.map(p => {
+    const roomCount = p.rooms.length;
+    const photoCount = p.rooms.reduce((n, r) => n + r.photos.length, 0);
+    const totals = projectTotals(p);
+    const totalStr = totals.grand_total > 0 ? formatMoney(totals.grand_total) : 'No estimates yet';
+    const dateStr = formatDate(p.createdAt);
+
+    return `
+      <div class="project-card" onclick="window.location.href='/project.html?id=${p.id}'">
+        <div class="project-card-header">
+          <div class="project-name">${escHtml(p.name)}</div>
+          <div class="project-total">${totalStr}</div>
+        </div>
+        <div class="project-meta">
+          <span>📅 ${dateStr}</span>
+          <span>🚪 ${roomCount} room${roomCount !== 1 ? 's' : ''}</span>
+          <span>📸 ${photoCount} photo${photoCount !== 1 ? 's' : ''}</span>
+        </div>
+        <button class="project-delete" onclick="confirmDeleteProject(event,'${p.id}')">🗑️</button>
+      </div>`;
+  }).join('');
+}
+
+function showNewProjectModal() {
+  document.getElementById('newProjectModal').classList.add('active');
+  setTimeout(() => document.getElementById('projectNameInput').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('newProjectModal').classList.remove('active');
+  document.getElementById('projectNameInput').value = '';
+}
+
+function hideModal(e) {
+  if (e.target.id === 'newProjectModal') closeModal();
+}
+
+function createNewProject() {
+  const name = document.getElementById('projectNameInput').value.trim();
+  if (!name) { showToast('Please enter a job name', 'error'); return; }
+  const project = createProject(name);
+  closeModal();
+  window.location.href = '/project.html?id=' + project.id;
+}
+
+document.getElementById('projectNameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') createNewProject();
+});
+
+function confirmDeleteProject(e, id) {
+  e.stopPropagation();
+  if (confirm('Delete this job and all its estimates?')) {
+    deleteProject(id);
+    renderProjects();
+    showToast('Job deleted');
+  }
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3000);
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+</script>
+</body>
+</html>

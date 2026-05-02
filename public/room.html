@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>Room — GC Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/css/app.css?v=2">
+</head>
+<body>
+
+<header class="app-header">
+  <a id="backBtn" href="#" class="icon-btn">←</a>
+  <h1 id="roomTitle">Room</h1>
+  <button class="icon-btn" onclick="renameRoom()">✏️</button>
+</header>
+
+<main class="page-content" id="pageContent"></main>
+
+<nav class="bottom-nav">
+  <a href="/index.html"><span class="nav-icon">🏗️</span>Jobs</a>
+  <a href="/materials.html" id="materialsNavLink"><span class="nav-icon">🔩</span>Materials</a>
+  <a href="/settings.html"><span class="nav-icon">⚙️</span>Settings</a>
+</nav>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p id="loadingMsg">Analyzing photos…<br><small style="opacity:0.75">This may take 20–40 seconds for multiple photos</small></p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/settings.js"></script>
+<script src="/js/projects.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const projectId = params.get('projectId');
+const roomId = params.get('roomId');
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!projectId || !roomId) { window.location.href = '/index.html'; return; }
+
+  const project = getProjectById(projectId);
+  const room = getRoomById(projectId, roomId);
+  if (!project || !room) { window.location.href = '/index.html'; return; }
+
+  document.getElementById('backBtn').href = `/project.html?id=${projectId}`;
+  document.getElementById('roomTitle').textContent = room.name;
+  document.title = room.name + ' — GC Estimator';
+  if (!isPaid()) document.getElementById('materialsNavLink').classList.add('nav-locked');
+
+  render();
+});
+
+function render() {
+  const room = getRoomById(projectId, roomId);
+  const content = document.getElementById('pageContent');
+  const analyzed = room.photos.filter(p => p.analyzed);
+  const unanalyzed = room.photos.filter(p => !p.analyzed);
+  const agg = aggregateEstimates(room.photos);
+
+  let html = '';
+
+  // Analyze All button — primary action
+  if (unanalyzed.length > 0) {
+    html += `
+      <div class="card analyze-banner">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <div style="font-size:2rem;">📸</div>
+          <div>
+            <div style="font-weight:700;color:var(--ink)">${unanalyzed.length} photo${unanalyzed.length!==1?'s':''} ready to analyze</div>
+            <div style="font-size:0.8rem;color:var(--ink2)">Claude will review all photos together for one unified estimate</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="analyzeAll()">
+          ⚡ Analyze All ${unanalyzed.length > 1 ? unanalyzed.length + ' Photos' : 'Photo'}
+        </button>
+      </div>`;
+  }
+
+  // Room estimate button (if any analyzed)
+  if (analyzed.length > 0) {
+    html += `
+      <button class="btn btn-green" style="margin-bottom:14px" onclick="goToRoomEstimate()">
+        📊 View Room Estimate · ${formatMoney(agg.totals.grand_total)}
+      </button>`;
+  }
+
+  // Photo grid
+  if (room.photos.length === 0) {
+    html += `
+      <div class="empty-state">
+        <div class="empty-icon">🚪</div>
+        <p>No photos assigned to this room.<br>
+        <a href="/project.html?id=${projectId}" style="color:var(--accent)">← Go back to add photos from the gallery</a></p>
+      </div>`;
+  } else {
+    html += `<div class="card-title" style="padding:0 4px 10px;">Photos in this Room</div>`;
+    html += `<div class="room-photo-grid">`;
+    html += room.photos.map(photo => {
+      const isAnalyzed = photo.analyzed && photo.estimate;
+      const total = photo.estimate?.totals?.grand_total || 0;
+      return `
+        <div class="room-photo-cell ${isAnalyzed ? 'analyzed' : 'pending'}">
+          <div class="room-photo-img-wrap" onclick="editPhotoLabel('${photo.id}')">
+            <img src="${photo.thumbnailDataUrl}" alt="" loading="lazy">
+            <div class="room-photo-status">${isAnalyzed ? '✓' : '⏳'}</div>
+          </div>
+          <div class="room-photo-meta">
+            <input class="room-photo-label-input"
+              value="${escHtml(photo.label || '')}"
+              placeholder="Add label…"
+              onblur="saveLabel('${photo.id}', this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()">
+            ${isAnalyzed ? `<div class="room-photo-total">${formatMoney(total)}</div>` : '<div class="room-photo-total" style="color:var(--ink2)">Not analyzed</div>'}
+          </div>
+          <div style="display:flex;gap:6px;padding:0 8px 8px;">
+            ${isAnalyzed ? `<button class="btn btn-secondary btn-sm" style="flex:1" onclick="viewPhotoEstimate('${photo.id}')">View</button>` : ''}
+            <button class="btn btn-outline btn-sm" style="flex:1;color:var(--red);border-color:var(--red)" onclick="returnToGallery('${photo.id}')">Remove</button>
+          </div>
+        </div>`;
+    }).join('');
+    html += `</div>`;
+  }
+
+  content.innerHTML = html;
+}
+
+// ─── Analyze All ──────────────────────────────────────────
+
+async function analyzeAll() {
+  const room = getRoomById(projectId, roomId);
+  const unanalyzed = room.photos.filter(p => !p.analyzed);
+  if (!unanalyzed.length) return;
+
+  const settings = getSettings();
+  const customMaterials = isPaid() ? getMaterialsDb() : [];
+
+  document.getElementById('loadingMsg').innerHTML =
+    `Analyzing ${unanalyzed.length} photo${unanalyzed.length!==1?'s':''} of ${room.name}…<br>
+     <small style="opacity:0.75">Claude is reviewing them together — ~${Math.ceil(unanalyzed.length * 8)}s</small>`;
+  document.getElementById('loadingOverlay').classList.add('active');
+
+  try {
+    // Build images array for batch endpoint
+    const images = unanalyzed.map(photo => ({
+      base64: photo.fullBase64,
+      mimeType: photo.mimeType || 'image/jpeg',
+      label: photo.label || ''
+    }));
+
+    const body = {
+      action: 'batch',
+      images,
+      roomName: room.name,
+      notes: unanalyzed.map(p => p.notes).filter(Boolean).join('. '),
+      laborRate: settings.laborRate,
+      markupPct: settings.markupPct
+    };
+    if (customMaterials.length) body.customMaterials = customMaterials;
+
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload.error || `Server error ${res.status}`);
+
+    // Store one estimate per photo (distribute the unified estimate)
+    // or store it on the first photo as the room-level result
+    // We'll mark each unanalyzed photo as analyzed and store the unified estimate on the room
+    unanalyzed.forEach((photo, i) => {
+      updateRoomPhoto(projectId, roomId, photo.id, {
+        analyzed: true,
+        // Only first photo carries the full estimate; rest marked analyzed
+        estimate: i === 0 ? payload.estimate : { scope_of_works: [], materials: [], labor: [], totals: { materials_subtotal: 0, labor_subtotal: 0, grand_total: 0 }, estimate_notes: 'See first photo for full room estimate.' }
+      });
+    });
+
+    // Store unified estimate at room level
+    updateRoom(projectId, roomId, { roomEstimate: payload.estimate, estimatedAt: new Date().toISOString() });
+
+    showToast('Analysis complete!', 'success');
+    render();
+
+  } catch (err) {
+    const msg = err.message.includes('Failed to fetch') ? 'No connection — requires internet' : err.message;
+    showToast(msg, 'error');
+  } finally {
+    document.getElementById('loadingOverlay').classList.remove('active');
+  }
+}
+
+// ─── Navigation ───────────────────────────────────────────
+
+function goToRoomEstimate() {
+  window.location.href = `/estimate.html?type=room&projectId=${projectId}&roomId=${roomId}`;
+}
+
+function viewPhotoEstimate(photoId) {
+  window.location.href = `/estimate.html?type=photo&projectId=${projectId}&roomId=${roomId}&photoId=${photoId}`;
+}
+
+// ─── Label editing ────────────────────────────────────────
+
+function saveLabel(photoId, value) {
+  updateRoomPhoto(projectId, roomId, photoId, { label: value.trim() });
+}
+
+function returnToGallery(photoId) {
+  if (confirm('Remove this photo from the room? It will go back to the job gallery.')) {
+    deleteRoomPhoto(projectId, roomId, photoId);
+    render();
+  }
+}
+
+function renameRoom() {
+  const room = getRoomById(projectId, roomId);
+  const name = prompt('Rename room:', room.name);
+  if (name && name.trim()) {
+    updateRoom(projectId, roomId, { name: name.trim() });
+    document.getElementById('roomTitle').textContent = name.trim();
+    render();
+  }
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3500);
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "buildCommand": null,
+  "outputDirectory": "public",
+  "functions": {
+    "api/analyze.js": { "memory": 1024, "maxDuration": 60 },
+    "api/validate-license.js": { "memory": 128, "maxDuration": 10 }
+  },
+  "rewrites": [
+    { "source": "/api/analyze", "destination": "/api/analyze" },
+    { "source": "/.netlify/functions/validate-license", "destination": "/api/validate-license" }
+  ]
+}

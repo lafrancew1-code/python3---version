@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>Settings — GC Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/css/app.css?v=2">
+</head>
+<body>
+
+<header class="app-header">
+  <a href="/index.html" class="icon-btn">←</a>
+  <h1>Settings</h1>
+</header>
+
+<main class="page-content">
+
+  <!-- Rates -->
+  <div class="card">
+    <div class="card-title">Your Rates</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label" for="laborRate">Labor Rate ($/hr)</label>
+        <input type="number" id="laborRate" class="form-input" min="1" max="999" step="1" placeholder="75">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="markupPct">Material Markup (%)</label>
+        <input type="number" id="markupPct" class="form-input" min="0" max="200" step="1" placeholder="15">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label" for="contractorName">Company Name <small style="font-weight:400;color:var(--ink2)">(optional)</small></label>
+      <input type="text" id="contractorName" class="form-input" placeholder="e.g. Smith General Contracting">
+    </div>
+  </div>
+
+  <!-- Plan -->
+  <div class="card">
+    <div class="card-title">Plan</div>
+
+    <div id="planFree">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div style="font-size:1.4rem;">⭐</div>
+        <div>
+          <div style="font-size:0.9rem;font-weight:700;color:var(--ink);">Upgrade to Pro</div>
+          <div style="font-family:var(--font-mono);font-size:0.6rem;color:var(--ink2);margin-top:3px;">Full breakdown + custom prices</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="licenseEmail">Your Email</label>
+        <input type="email" id="licenseEmail" class="form-input" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label" for="licenseCode">Unlock Code</label>
+        <input type="text" id="licenseCode" class="form-input" placeholder="e.g. a3f7c19b2d084e61"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          style="font-family:var(--font-mono);letter-spacing:0.05em;">
+      </div>
+      <div id="licenseError" style="display:none;font-family:var(--font-mono);font-size:0.7rem;color:var(--red);margin-bottom:10px;"></div>
+      <button class="btn btn-primary" id="btnUnlock" onclick="submitLicense()">Unlock Pro</button>
+    </div>
+
+    <div id="planPro" style="display:none;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div style="font-size:1.4rem;">✅</div>
+        <div>
+          <div style="font-size:0.9rem;font-weight:700;color:var(--green);">Pro Unlocked</div>
+          <div id="planProEmail" style="font-family:var(--font-mono);font-size:0.6rem;color:var(--ink2);margin-top:3px;"></div>
+        </div>
+      </div>
+      <a href="/materials.html" class="btn btn-secondary" style="width:100%;margin-bottom:10px;">🔩 Manage Material Prices →</a>
+      <button class="btn btn-secondary btn-sm" onclick="confirmRevoke()" style="width:100%;color:var(--red);">Remove License</button>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="saveAndReturn()">✅ Save Settings</button>
+
+  <div class="section-gap"></div>
+
+  <div class="card">
+    <div class="card-title">About</div>
+    <p style="font-size:0.875rem;line-height:1.6;color:var(--ink2);">
+      GC Estimator uses AI to analyze room photos and generate construction estimates.
+      All estimates are approximate — review before presenting to clients.
+      Powered by Claude AI (Anthropic).
+    </p>
+  </div>
+
+</main>
+
+<nav class="bottom-nav">
+  <a href="/index.html">
+    <span class="nav-icon">🏗️</span>Jobs
+  </a>
+  <a href="/materials.html" id="materialsNavLink">
+    <span class="nav-icon">🔩</span>Materials
+  </a>
+  <a href="/settings.html" class="active">
+    <span class="nav-icon">⚙️</span>Settings
+  </a>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/settings.js"></script>
+<script src="/js/projects.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const s = getSettings();
+  document.getElementById('laborRate').value = s.laborRate;
+  document.getElementById('markupPct').value = s.markupPct;
+  document.getElementById('contractorName').value = s.contractorName;
+  renderPlanUI();
+});
+
+function renderPlanUI() {
+  const paid = isPaid();
+  document.getElementById('planFree').style.display = paid ? 'none' : 'block';
+  document.getElementById('planPro').style.display  = paid ? 'block' : 'none';
+  if (paid) document.getElementById('planProEmail').textContent = getLicenseEmail();
+  const ml = document.getElementById('materialsNavLink');
+  if (ml) ml.classList.toggle('nav-locked', !paid);
+}
+
+let unlocking = false;
+async function submitLicense() {
+  if (unlocking) return;
+  const email = document.getElementById('licenseEmail').value.trim();
+  const code  = document.getElementById('licenseCode').value.trim();
+  const errEl = document.getElementById('licenseError');
+  const btn   = document.getElementById('btnUnlock');
+  errEl.style.display = 'none';
+  if (!email) { showLicenseError('Please enter your email address.'); return; }
+  if (!code)  { showLicenseError('Please enter your unlock code.'); return; }
+  unlocking = true; btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const resp = await fetch('/.netlify/functions/validate-license', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    const data = await resp.json();
+    if (data.valid) {
+      activateLicense(data.email, code);
+      renderPlanUI();
+      showToast('Pro unlocked! Welcome.', 'success');
+    } else {
+      showLicenseError(data.error || 'Invalid email or unlock code.');
+    }
+  } catch {
+    showLicenseError('Network error — check your connection and try again.');
+  } finally {
+    unlocking = false; btn.disabled = false; btn.textContent = 'Unlock Pro';
+  }
+}
+
+function showLicenseError(msg) {
+  const el = document.getElementById('licenseError');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function confirmRevoke() {
+  if (!confirm('Remove your Pro license from this device? You can re-enter your code to unlock again.')) return;
+  revokeLicense(); renderPlanUI();
+  document.getElementById('licenseEmail').value = '';
+  document.getElementById('licenseCode').value = '';
+  showToast('License removed.', '');
+}
+
+function saveAndReturn() {
+  const laborRate = parseFloat(document.getElementById('laborRate').value);
+  const markupPct = parseFloat(document.getElementById('markupPct').value);
+  const contractorName = document.getElementById('contractorName').value.trim();
+  if (isNaN(laborRate) || laborRate <= 0) { showToast('Enter a valid labor rate', 'error'); return; }
+  if (isNaN(markupPct) || markupPct < 0)  { showToast('Enter a valid markup %', 'error'); return; }
+  saveSettings({ laborRate, markupPct, contractorName });
+  document.getElementById('toast').textContent = 'Settings saved!';
+  document.getElementById('toast').className = 'toast show success';
+  setTimeout(() => { window.location.href = '/index.html'; }, 900);
+}
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3000);
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+</script>
+</body>
+</html>
