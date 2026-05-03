@@ -27,7 +27,7 @@
   <button class="tab-btn active" id="tabGallery" onclick="switchTab('gallery')">
     📷 Photos <span class="tab-badge" id="galleryBadge" style="display:none"></span>
   </button>
-  <button class="tab-btn" id="tabRooms" onclick="switchTab('rooms')">
+  <button class="tab-btn" id="tabRooms" onclick="switchTab('rooms')" style="display:none">
     🚪 Rooms <span class="tab-badge" id="roomsBadge" style="display:none"></span>
   </button>
 </div>
@@ -126,6 +126,15 @@ function switchTab(tab) {
   document.getElementById('fab').textContent = tab === 'gallery' ? '📷' : '＋';
 
   render();
+}
+
+function updateRoomsTabVisibility() {
+  project = getProjectById(projectId);
+  const hasRooms = project.rooms.some(r => r.photos.length > 0);
+  const tabRooms = document.getElementById('tabRooms');
+  tabRooms.style.display = hasRooms ? '' : 'none';
+  // If on rooms tab with no rooms, bounce back to gallery
+  if (!hasRooms && currentTab === 'rooms') switchTab('gallery');
 }
 
 function fabAction() {
@@ -417,8 +426,8 @@ function renderRooms() {
       <div class="card" style="margin-bottom:14px;">
         <div class="card-title">Generate Estimate</div>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <button class="btn btn-primary" onclick="goToEstimate('project')">📊 Full Project Estimate</button>
-          <button class="btn btn-secondary" onclick="goToEstimate('project-breakdown')">🏠 Estimate by Room</button>
+          <button class="btn btn-primary" onclick="goToEstimate('project-breakdown')">📊 Analyse Project</button>
+          <button class="btn btn-secondary" onclick="goToEstimate('project')">🏠 Full Project Total</button>
         </div>
       </div>`;
   }
@@ -440,6 +449,7 @@ function renderRooms() {
         : analyzed > 0 ? `${analyzed}/${room.photos.length} analyzed`
         : `${room.photos.length} photo${room.photos.length!==1?'s':''} · not analyzed`;
 
+      const hasUnanalyzed = room.photos.some(p => !p.analyzed);
       return `
         <div class="room-card" onclick="goToRoom('${room.id}')">
           <div class="room-card-left">
@@ -450,9 +460,13 @@ function renderRooms() {
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <span style="color:var(--ink2);font-size:1.2rem;">›</span>
             <button class="history-delete" onclick="confirmDeleteRoom(event,'${room.id}')">🗑️</button>
           </div>
+          ${room.photos.length > 0 ? `
+          <div class="project-card-actions" onclick="event.stopPropagation()">
+            ${hasUnanalyzed ? `<button class="btn btn-primary btn-sm" onclick="goToRoom('${room.id}')">⚡ Analyse Room</button>` : ''}
+            ${analyzed > 0 ? `<button class="btn btn-secondary btn-sm" onclick="goToRoomEstimate('${room.id}')">📊 View Estimate</button>` : ''}
+          </div>` : ''}
         </div>`;
     }).join('');
   }
@@ -463,12 +477,17 @@ function renderRooms() {
 function render() {
   if (currentTab === 'gallery') renderGallery();
   else renderRooms();
+  updateRoomsTabVisibility();
 }
 
 // ─── Navigation ───────────────────────────────────────────
 
 function goToRoom(roomId) {
   window.location.href = `/room.html?projectId=${projectId}&roomId=${roomId}`;
+}
+
+function goToRoomEstimate(roomId) {
+  window.location.href = `/estimate.html?type=room&projectId=${projectId}&roomId=${roomId}`;
 }
 
 function goToEstimate(type) {
