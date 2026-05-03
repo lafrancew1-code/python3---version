@@ -514,14 +514,279 @@ function saveMaterialEdit(index) {
 }
 
 function exportButtons(estimate, settings, isBreakdown) {
+  const pdfBtn = isPaid()
+    ? `<button class="btn btn-primary btn-sm" onclick="doExportPDF()">📄 Export PDF</button>`
+    : `<button class="btn btn-outline btn-sm" style="opacity:0.5" onclick="showToast('PDF export is a Pro feature — upgrade in Settings','error')">📄 PDF (Pro)</button>`;
   return `
     <div class="export-row" style="margin-bottom:14px;">
-      <button class="btn btn-secondary btn-sm" onclick="doExportCSV()">⬇️ Export CSV</button>
-      <button class="btn btn-outline btn-sm" onclick="doCopyText()">📋 Copy Text</button>
+      ${pdfBtn}
+      <button class="btn btn-secondary btn-sm" onclick="doExportCSV()">⬇️ CSV</button>
+      <button class="btn btn-outline btn-sm" onclick="doCopyText()">📋 Copy</button>
     </div>`;
 }
 
 // ─── Export ───────────────────────────────────────────────
+
+function doExportPDF() {
+  if (!isPaid()) { showToast('PDF export is a Pro feature', 'error'); return; }
+  const ctx = window._exportContext;
+  if (!ctx) return;
+
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { showToast('PDF library not loaded — check connection', 'error'); return; }
+
+  const { estimate, headline } = ctx;
+  const settings = getSettings();
+  const companyName = settings.contractorName || 'FieldEstimate';
+  const dateStr = formatDate(new Date().toISOString());
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  const PW = 215.9;  // page width
+  const PH = 279.4;  // page height
+  const ML = 18;     // margin left
+  const MR = 18;     // margin right
+  const CW = PW - ML - MR; // content width
+
+  const DARK   = [12, 30, 16];
+  const ORANGE = [255, 106, 0];
+  const WHITE  = [255, 255, 255];
+  const INK    = [20, 20, 20];
+  const GREY   = [110, 110, 110];
+  const LGREY  = [230, 230, 230];
+  const BGBOX  = [245, 243, 238];
+
+  let y = 0;
+
+  // ── header bar ──────────────────────────────────────────
+  doc.setFillColor(...DARK);
+  doc.rect(0, 0, PW, 36, 'F');
+
+  // orange accent line at bottom of header
+  doc.setFillColor(...ORANGE);
+  doc.rect(0, 34, PW, 2, 'F');
+
+  doc.setTextColor(...WHITE);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(companyName.toUpperCase(), ML, 15);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(180, 200, 185);
+  doc.text('CONSTRUCTION ESTIMATE', ML, 23);
+
+  doc.setTextColor(...WHITE);
+  doc.setFontSize(9);
+  doc.text(dateStr, PW - MR, 15, { align: 'right' });
+  doc.setFontSize(8);
+  doc.setTextColor(180, 200, 185);
+  doc.text('fieldestimator.vercel.app', PW - MR, 23, { align: 'right' });
+
+  y = 48;
+
+  // ── job headline ─────────────────────────────────────────
+  doc.setTextColor(...INK);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(headline, ML, y);
+  y += 4;
+
+  doc.setDrawColor(...ORANGE);
+  doc.setLineWidth(0.6);
+  doc.line(ML, y, PW - MR, y);
+  y += 8;
+
+  // ── helper: section header ───────────────────────────────
+  function sectionHeader(title) {
+    checkPage(12);
+    doc.setFillColor(...DARK);
+    doc.rect(ML, y - 4, CW, 8, 'F');
+    doc.setTextColor(...WHITE);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(title, ML + 3, y + 0.5);
+    y += 8;
+    doc.setTextColor(...INK);
+  }
+
+  // ── helper: page overflow check ──────────────────────────
+  function checkPage(needed) {
+    if (y + needed > PH - 25) {
+      doc.addPage();
+      y = 20;
+    }
+  }
+
+  // ── helper: table row ────────────────────────────────────
+  function tableRow(cols, widths, isHeader, shade) {
+    checkPage(8);
+    if (shade) {
+      doc.setFillColor(...BGBOX);
+      doc.rect(ML, y - 4.5, CW, 7, 'F');
+    }
+    doc.setFont('helvetica', isHeader ? 'bold' : 'normal');
+    doc.setFontSize(isHeader ? 8 : 9);
+    doc.setTextColor(...(isHeader ? GREY : INK));
+    let x = ML;
+    cols.forEach((col, i) => {
+      const align = i > 0 ? 'right' : 'left';
+      const xPos = align === 'right' ? x + widths[i] : x;
+      doc.text(String(col), xPos, y, { align });
+      x += widths[i];
+    });
+    y += 7;
+  }
+
+  // ── SCOPE OF WORKS ───────────────────────────────────────
+  sectionHeader('SCOPE OF WORKS');
+  y += 2;
+  const scope = estimate.scope_of_works || [];
+  if (scope.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.setTextColor(...GREY);
+    doc.text('No scope items.', ML + 3, y);
+    y += 7;
+  } else {
+    scope.forEach((item, i) => {
+      checkPage(8);
+      const lines = doc.splitTextToSize(`${i + 1}.  ${item}`, CW - 4);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...INK);
+      if (i % 2 === 0) {
+        doc.setFillColor(...BGBOX);
+        doc.rect(ML, y - 4.5, CW, lines.length * 5 + 3, 'F');
+      }
+      doc.text(lines, ML + 3, y);
+      y += lines.length * 5 + 2;
+    });
+  }
+  y += 4;
+
+  // ── LABOR ────────────────────────────────────────────────
+  const laborItems = estimate.labor || [];
+  if (laborItems.length > 0) {
+    sectionHeader('LABOR');
+    y += 2;
+    const lW = [CW * 0.48, CW * 0.18, CW * 0.18, CW * 0.16];
+    tableRow(['Task', 'Hours', 'Rate', 'Total'], lW, true, false);
+    doc.setDrawColor(...LGREY);
+    doc.setLineWidth(0.3);
+    doc.line(ML, y - 4, PW - MR, y - 4);
+    let laborSub = 0;
+    laborItems.forEach((l, i) => {
+      const rate = l._customRate != null ? l._customRate : settings.laborRate;
+      const total = parseFloat((l.hours * rate).toFixed(2));
+      laborSub += total;
+      tableRow([l.task, `${l.hours} hrs`, `$${rate}/hr`, formatMoney(total)], lW, false, i % 2 === 0);
+    });
+    doc.setDrawColor(...LGREY);
+    doc.line(ML, y - 3, PW - MR, y - 3);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...DARK);
+    doc.text('Labor Subtotal', ML + 3, y + 2);
+    doc.text(formatMoney(laborSub), PW - MR, y + 2, { align: 'right' });
+    y += 10;
+  }
+
+  // ── MATERIALS ────────────────────────────────────────────
+  const matItems = estimate.materials || [];
+  if (matItems.length > 0) {
+    sectionHeader('MATERIALS');
+    y += 2;
+    const mW = [CW * 0.42, CW * 0.15, CW * 0.15, CW * 0.15, CW * 0.13];
+    tableRow(['Item', 'Unit', 'Qty', 'Unit $', 'Total'], mW, true, false);
+    doc.setDrawColor(...LGREY);
+    doc.setLineWidth(0.3);
+    doc.line(ML, y - 4, PW - MR, y - 4);
+    let matSub = 0;
+    matItems.forEach((m, i) => {
+      matSub += m.line_total;
+      tableRow([m.item, m.unit, String(m.quantity), formatMoney(m.unit_cost), formatMoney(m.line_total)], mW, false, i % 2 === 0);
+    });
+    doc.setDrawColor(...LGREY);
+    doc.line(ML, y - 3, PW - MR, y - 3);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...DARK);
+    doc.text(`Materials Subtotal  (incl. ${settings.markupPct}% markup)`, ML + 3, y + 2);
+    doc.text(formatMoney(matSub), PW - MR, y + 2, { align: 'right' });
+    y += 12;
+  }
+
+  // ── TOTALS BOX ───────────────────────────────────────────
+  checkPage(40);
+  const boxH = 36;
+  doc.setFillColor(...DARK);
+  doc.roundedRect(ML, y, CW, boxH, 3, 3, 'F');
+  doc.setFillColor(...ORANGE);
+  doc.roundedRect(ML, y, CW, 10, 3, 3, 'F');
+  doc.rect(ML, y + 5, CW, 5, 'F');
+
+  doc.setTextColor(...WHITE);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('ESTIMATE SUMMARY', ML + 6, y + 7);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 200, 185);
+  const matSub2 = estimate.totals?.materials_subtotal || 0;
+  const labSub2 = estimate.totals?.labor_subtotal || 0;
+  const grand   = estimate.totals?.grand_total || 0;
+  doc.text('Materials', ML + 6, y + 18);
+  doc.text(formatMoney(matSub2), PW - MR - 2, y + 18, { align: 'right' });
+  doc.text('Labor', ML + 6, y + 25);
+  doc.text(formatMoney(labSub2), PW - MR - 2, y + 25, { align: 'right' });
+
+  doc.setDrawColor(60, 90, 65);
+  doc.setLineWidth(0.4);
+  doc.line(ML + 4, y + 27, PW - MR - 4, y + 27);
+
+  doc.setTextColor(...WHITE);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('GRAND TOTAL', ML + 6, y + 33);
+  doc.text(formatMoney(grand), PW - MR - 2, y + 33, { align: 'right' });
+  y += boxH + 8;
+
+  // ── NOTES ────────────────────────────────────────────────
+  if (estimate.estimate_notes) {
+    checkPage(20);
+    doc.setFillColor(255, 248, 220);
+    const noteLines = doc.splitTextToSize(estimate.estimate_notes, CW - 10);
+    const noteH = noteLines.length * 5 + 12;
+    doc.roundedRect(ML, y, CW, noteH, 2, 2, 'F');
+    doc.setTextColor(120, 80, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('⚠  Notes & Assumptions', ML + 4, y + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(noteLines, ML + 4, y + 13);
+    y += noteH + 6;
+  }
+
+  // ── footer ────────────────────────────────────────────────
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFillColor(...DARK);
+    doc.rect(0, PH - 12, PW, 12, 'F');
+    doc.setTextColor(140, 160, 145);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.text('Generated by FieldEstimate · fieldestimator.vercel.app · Estimates are approximate — review before presenting to clients.', ML, PH - 5);
+    doc.text(`Page ${p} of ${totalPages}`, PW - MR, PH - 5, { align: 'right' });
+  }
+
+  // ── save ─────────────────────────────────────────────────
+  const filename = `estimate_${headline.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}.pdf`;
+  doc.save(filename);
+  showToast('PDF downloaded!', 'success');
+}
 
 function doExportCSV() {
   const ctx = window._exportContext;
