@@ -25,7 +25,7 @@
 
 /* ─── Reset ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; font-family: var(--font-ui); font-size: 16px; color: var(--ink); background: var(--bg); }
+html, body { height: 100%; font-family: var(--font-ui); font-size: 16px; color: var(--ink); background-color: var(--bg); background-image: radial-gradient(circle, rgba(15,15,10,0.09) 1px, transparent 1px); background-size: 22px 22px; }
 a { color: inherit; text-decoration: none; }
 button { cursor: pointer; font: inherit; border: none; background: none; }
 input, textarea, select { font: inherit; }
@@ -235,7 +235,7 @@ input, textarea, select { font: inherit; }
   background: var(--surface); border-radius: var(--radius);
   border: 1px solid var(--hairline);
   padding: 14px 14px 14px 16px;
-  margin-bottom: 10px; cursor: pointer; position: relative;
+  margin-bottom: 10px; cursor: pointer;
   transition: transform 0.1s;
 }
 .project-card:active { transform: scale(0.987); }
@@ -243,7 +243,7 @@ input, textarea, select { font: inherit; }
 .project-name { font-size: 0.95rem; font-weight: 600; color: var(--ink); flex: 1; padding-right: 8px; letter-spacing: -0.1px; }
 .project-total { font-family: var(--font-mono); font-size: 1rem; font-weight: 600; color: var(--ink); letter-spacing: -0.3px; }
 .project-meta { font-family: var(--font-mono); font-size: 0.62rem; color: var(--ink2); display: flex; flex-wrap: wrap; gap: 10px; letter-spacing: 0.03em; }
-.project-delete { position: absolute; top: 10px; right: 10px; padding: 6px; color: var(--ink2); font-size: 0.95rem; }
+.project-delete { padding: 4px 6px; color: var(--ink2); font-size: 0.95rem; flex-shrink: 0; }
 .project-card-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline); }
 
 /* ─── Room cards ────────────────────────────────────────── */

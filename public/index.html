@@ -96,7 +96,10 @@ function renderProjects() {
       <div class="project-card" onclick="window.location.href='/project.html?id=${p.id}'">
         <div class="project-card-header">
           <div class="project-name">${escHtml(p.name)}</div>
-          <div class="project-total">${totalStr}</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div class="project-total">${totalStr}</div>
+            <button class="project-delete" onclick="confirmDeleteProject(event,'${p.id}')">🗑️</button>
+          </div>
         </div>
         <div class="project-meta">
           <span>📅 ${dateStr}</span>
@@ -108,7 +111,6 @@ function renderProjects() {
           <button class="btn btn-secondary btn-sm" onclick="window.location.href='/project.html?id=${p.id}'">Open Job</button>
           <button class="btn btn-primary btn-sm" onclick="window.location.href='/estimate.html?type=project-breakdown&projectId=${p.id}'">📊 View Estimate</button>
         </div>` : ''}
-        <button class="project-delete" onclick="confirmDeleteProject(event,'${p.id}')">🗑️</button>
       </div>`;
   }).join('');
 }
