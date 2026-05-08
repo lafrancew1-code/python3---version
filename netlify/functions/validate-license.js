@@ -1,18 +1,22 @@
 const https = require('https');
 const crypto = require('crypto');
+const querystring = require('querystring');
 
-const WHOP_PRODUCT_ID = 'prod_FhQkubpj4IiKz';
+const GUMROAD_PRODUCT = 'xcbdvf';
 
-function callWhop(licenseKey, apiKey) {
+function callGumroad(licenseKey) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify({ license_key: licenseKey, metadata: {} });
+    const data = querystring.stringify({
+      product_permalink: GUMROAD_PRODUCT,
+      license_key: licenseKey,
+      increment_uses_count: 'false'
+    });
     const req = https.request({
-      hostname: 'api.whop.com',
-      path: '/api/v2/licenses/validate',
+      hostname: 'api.gumroad.com',
+      path: '/v2/licenses/verify',
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(data),
       },
     }, (res) => {
@@ -21,18 +25,11 @@ function callWhop(licenseKey, apiKey) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(body);
-          if (res.statusCode === 200) {
-            const productId = parsed.product_id || parsed.membership?.product_id;
-            if (productId && productId !== WHOP_PRODUCT_ID) {
-              resolve({ valid: false, error: 'License not valid for this product' });
-            } else if (parsed.status && parsed.status !== 'active') {
-              resolve({ valid: false, error: 'License is ' + parsed.status });
-            } else {
-              resolve({ valid: true });
-            }
+          if (parsed.success) {
+            resolve({ valid: true });
           } else {
-            const errMsg = typeof parsed.error === 'string' ? parsed.error : (typeof parsed.message === 'string' ? parsed.message : 'Invalid license key');
-            resolve({ valid: false, error: errMsg });
+            const msg = typeof parsed.message === 'string' ? parsed.message : 'Invalid license key';
+            resolve({ valid: false, error: msg });
           }
         } catch {
           resolve({ valid: false, error: 'Invalid response from license server' });
@@ -56,9 +53,6 @@ exports.handler = async function (event) {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ valid: false, error: 'Method not allowed' }) };
 
-  const apiKey = process.env.WHOP_API_KEY;
-  if (!apiKey) return { statusCode: 500, headers, body: JSON.stringify({ valid: false, error: 'Server config error' }) };
-
   let body;
   try { body = JSON.parse(event.body); } catch { return { statusCode: 400, headers, body: JSON.stringify({ valid: false, error: 'Invalid body' }) }; }
 
@@ -75,7 +69,7 @@ exports.handler = async function (event) {
   }
 
   try {
-    const result = await callWhop(license_key.trim(), apiKey);
+    const result = await callGumroad(license_key.trim());
     if (result.valid) {
       return { statusCode: 200, headers, body: JSON.stringify({ valid: true }) };
     } else {

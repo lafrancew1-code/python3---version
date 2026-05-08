@@ -1,18 +1,22 @@
 const https = require('https');
 const crypto = require('crypto');
+const querystring = require('querystring');
 
-const WHOP_PRODUCT_ID = 'prod_FhQkubpj4IiKz';
+const GUMROAD_PRODUCT = 'xcbdvf';
 
-function callWhop(licenseKey, apiKey) {
+function callGumroad(licenseKey) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify({ license_key: licenseKey, metadata: {} });
+    const data = querystring.stringify({
+      product_permalink: GUMROAD_PRODUCT,
+      license_key: licenseKey,
+      increment_uses_count: 'false'
+    });
     const req = https.request({
-      hostname: 'api.whop.com',
-      path: '/api/v2/licenses/validate',
+      hostname: 'api.gumroad.com',
+      path: '/v2/licenses/verify',
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(data),
       },
     }, (res) => {
@@ -21,19 +25,11 @@ function callWhop(licenseKey, apiKey) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(body);
-          if (res.statusCode === 200) {
-            // Confirm it belongs to this product if Whop returns product info
-            const productId = parsed.product_id || parsed.membership?.product_id;
-            if (productId && productId !== WHOP_PRODUCT_ID) {
-              resolve({ valid: false, error: 'License not valid for this product' });
-            } else if (parsed.status && parsed.status !== 'active') {
-              resolve({ valid: false, error: 'License is ' + parsed.status });
-            } else {
-              resolve({ valid: true });
-            }
+          if (parsed.success) {
+            resolve({ valid: true });
           } else {
-            const errMsg = typeof parsed.error === 'string' ? parsed.error : (typeof parsed.message === 'string' ? parsed.message : 'Invalid license key');
-            resolve({ valid: false, error: errMsg });
+            const msg = typeof parsed.message === 'string' ? parsed.message : 'Invalid license key';
+            resolve({ valid: false, error: msg });
           }
         } catch {
           resolve({ valid: false, error: 'Invalid response from license server' });
@@ -54,9 +50,6 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ valid: false, error: 'Method not allowed' }); return; }
 
-  const apiKey = process.env.WHOP_API_KEY;
-  if (!apiKey) { res.status(500).json({ valid: false, error: 'Server config error' }); return; }
-
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
   const { license_key } = body;
   if (!license_key || typeof license_key !== 'string') {
@@ -64,7 +57,7 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // Admin bypass — derived from LICENSE_SECRET (already confirmed working in Vercel)
+  // Admin bypass — derived from LICENSE_SECRET
   const secret = (process.env.LICENSE_SECRET || '').trim();
   if (secret) {
     const adminKey = crypto.createHmac('sha256', secret).update('admin').digest('hex').substring(0, 16).toUpperCase();
@@ -75,14 +68,14 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const result = await callWhop(license_key.trim(), apiKey);
+    const result = await callGumroad(license_key.trim());
     if (result.valid) {
       res.status(200).json({ valid: true });
     } else {
       res.status(400).json({ valid: false, error: result.error || 'Invalid license key' });
     }
   } catch (err) {
-    console.error('Whop validation error:', err.message);
+    console.error('Gumroad validation error:', err.message);
     res.status(500).json({ valid: false, error: 'Could not reach license server' });
   }
 };
