@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>How to Use — FieldEstimate</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/css/app.css?v=3">
+  <style>
+    .help-step {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--hairline);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .help-step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--accent);
+      color: white;
+      border-radius: 50%;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-right: 10px;
+    }
+    .help-step-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .help-step-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .help-step-body {
+      font-size: 0.88rem;
+      line-height: 1.65;
+      color: var(--ink2);
+    }
+    .help-step-body ol {
+      padding-left: 18px;
+      margin: 8px 0 0;
+    }
+    .help-step-body li {
+      margin-bottom: 5px;
+    }
+    .help-tip {
+      background: #FFF8E7;
+      border: 1px solid #FFD966;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.85rem;
+      color: #7A5800;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .help-intro {
+      font-size: 0.9rem;
+      color: var(--ink2);
+      line-height: 1.6;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <a href="/index.html" class="icon-btn">←</a>
+  <h1>How to Use</h1>
+</header>
+
+<main class="page-content">
+
+  <p class="help-intro">
+    FieldEstimate lets you photograph a job site, organise photos by room, and generate a cost estimate — all from your phone.
+  </p>
+
+  <div class="help-step">
+    <div class="help-step-header">
+      <span class="help-step-number">1</span>
+      <div class="help-step-title">Create a New Job</div>
+    </div>
+    <div class="help-step-body">
+      Tap the <strong>＋</strong> button in the bottom right corner. Enter the job name or address, then tap <strong>Create</strong>. Your new job will appear on the Jobs screen.
+    </div>
+  </div>
+
+  <div class="help-step">
+    <div class="help-step-header">
+      <span class="help-step-number">2</span>
+      <div class="help-step-title">Add Photos</div>
+    </div>
+    <div class="help-step-body">
+      Open the job you just created and tap the <strong>📷</strong> button to add photos. Photograph every area that needs repair or attention — there's no limit. The more you capture, the more accurate your estimate will be.
+    </div>
+  </div>
+
+  <div class="help-step">
+    <div class="help-step-header">
+      <span class="help-step-number">3</span>
+      <div class="help-step-title">Sort Photos by Room or Area</div>
+    </div>
+    <div class="help-step-body">
+      Assign photos to specific rooms (e.g. Kitchen, Bedroom, Bathroom):
+      <ol>
+        <li>Tap each photo that belongs to one area to select it</li>
+        <li>An <strong>Assign to Room →</strong> button appears at the bottom</li>
+        <li>Tap it, then choose an existing room or create a new one</li>
+        <li>Repeat for each group of photos until every photo is assigned</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="help-step">
+    <div class="help-step-header">
+      <span class="help-step-number">4</span>
+      <div class="help-step-title">Analyse by Room</div>
+    </div>
+    <div class="help-step-body">
+      Once photos are sorted, the <strong>Rooms</strong> tab will appear at the top. Tap it to see your room list. Each room has an <strong>⚡ Analyse Room</strong> button — tap it to generate a cost estimate for that area.
+    </div>
+  </div>
+
+  <div class="help-step">
+    <div class="help-step-header">
+      <span class="help-step-number">5</span>
+      <div class="help-step-title">Get the Full Project Total</div>
+    </div>
+    <div class="help-step-body">
+      Tap <strong>📊 Analyse Project</strong> to see the estimate for the entire job — broken down by room and trade. Every line item can be edited directly to adjust figures and match your budget.
+    </div>
+  </div>
+
+  <div class="help-tip">
+    💡 <strong>Pro tip:</strong> Label your photos before analysing — it helps the AI understand what each area is and gives you a more accurate scope of works.
+  </div>
+
+  <div class="help-tip">
+    💡 <strong>Pro version</strong> unlocks the full materials breakdown, labour table editing, custom material prices, and PDF export. Upgrade in <a href="/settings.html" style="color:var(--accent);font-weight:600;">Settings</a>.
+  </div>
+
+  <div class="section-gap"></div>
+
+</main>
+
+<nav class="bottom-nav">
+  <a href="/index.html"><span class="nav-icon">🏗️</span>Jobs</a>
+  <a href="/materials.html" id="materialsNavLink"><span class="nav-icon">🔩</span>Materials</a>
+  <a href="/settings.html"><span class="nav-icon">⚙️</span>Settings</a>
+</nav>
+
+<script src="/js/settings.js"></script>
+<script src="/js/projects.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!isPaid()) document.getElementById('materialsNavLink').classList.add('nav-locked');
+  });
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+  }
+</script>
+</body>
+</html>

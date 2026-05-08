@@ -2,7 +2,7 @@ const https = require('https');
 const crypto = require('crypto');
 const querystring = require('querystring');
 
-const GUMROAD_PRODUCT = 'xcbdvf';
+const GUMROAD_PRODUCT = 'xcbdvf'; // permalink (also works for verification)
 
 function callGumroad(licenseKey) {
   return new Promise((resolve, reject) => {
