@@ -69,6 +69,32 @@ function render() {
 
   let html = '';
 
+  // Room Dimensions card
+  const dim = room.dimensions || {};
+  const sqft = dim.length && dim.width ? Math.round(dim.length * dim.width) : null;
+  html += `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title" style="margin-bottom:10px;">📐 Room Dimensions <span style="font-size:0.7rem;font-weight:400;color:var(--ink2);">(improves estimate accuracy)</span></div>
+      <div style="display:flex;gap:10px;margin-bottom:8px;">
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">Length (ft)</label>
+          <input type="number" id="dimLength" class="form-input" placeholder="e.g. 14" min="1" step="0.5" inputmode="decimal"
+            value="${dim.length || ''}" onblur="saveDimensions()">
+        </div>
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">Width (ft)</label>
+          <input type="number" id="dimWidth" class="form-input" placeholder="e.g. 12" min="1" step="0.5" inputmode="decimal"
+            value="${dim.width || ''}" onblur="saveDimensions()">
+        </div>
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">Height (ft)</label>
+          <input type="number" id="dimHeight" class="form-input" placeholder="e.g. 9" min="1" step="0.5" inputmode="decimal"
+            value="${dim.height || ''}" onblur="saveDimensions()">
+        </div>
+      </div>
+      ${sqft ? `<div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--accent);font-weight:600;">≈ ${sqft} sq ft floor area · ${Math.round(2*(dim.length+dim.width)*dim.height)} sq ft wall area</div>` : '<div style="font-size:0.75rem;color:var(--ink2);">Enter measurements to help Claude calculate material quantities accurately.</div>'}
+    </div>`;
+
   // Analyze All button — primary action
   if (unanalyzed.length > 0) {
     html += `
@@ -134,6 +160,18 @@ function render() {
   content.innerHTML = html;
 }
 
+// ─── Dimensions ───────────────────────────────────────────
+
+function saveDimensions() {
+  const length = parseFloat(document.getElementById('dimLength')?.value) || null;
+  const width  = parseFloat(document.getElementById('dimWidth')?.value)  || null;
+  const height = parseFloat(document.getElementById('dimHeight')?.value) || null;
+  const dimensions = (length || width || height) ? { length, width, height } : null;
+  updateRoom(projectId, roomId, { dimensions });
+  // Refresh the area calculation display
+  render();
+}
+
 // ─── Analyze All ──────────────────────────────────────────
 
 async function analyzeAll() {
@@ -163,7 +201,8 @@ async function analyzeAll() {
       roomName: room.name,
       notes: unanalyzed.map(p => p.notes).filter(Boolean).join('. '),
       laborRate: settings.laborRate,
-      markupPct: settings.markupPct
+      markupPct: settings.markupPct,
+      dimensions: room.dimensions || null
     };
     if (customMaterials.length) body.customMaterials = customMaterials;
 

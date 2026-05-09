@@ -125,6 +125,28 @@ function buildCustomPricesText(customMaterials) {
     customMaterials.map(m => `- ${m.name}: $${m.cost} per ${m.unit}`).join('\n') + '\n';
 }
 
+function buildDimensionsText(dimensions) {
+  if (!dimensions) return '';
+  const { length, width, height } = dimensions;
+  if (!length && !width && !height) return '';
+  let text = '\nROOM MEASUREMENTS PROVIDED (use these for accurate material quantities):\n';
+  if (length && width) {
+    const floorArea = (length * width).toFixed(1);
+    text += `- Floor area: ${length}ft × ${width}ft = ${floorArea} sq ft\n`;
+    if (height) {
+      const wallArea = (2 * (length + width) * height).toFixed(1);
+      text += `- Wall area: ~${wallArea} sq ft (before subtracting doors/windows)\n`;
+      text += `- Ceiling height: ${height}ft\n`;
+    }
+  } else {
+    if (length) text += `- Length: ${length}ft\n`;
+    if (width)  text += `- Width: ${width}ft\n`;
+    if (height) text += `- Height: ${height}ft\n`;
+  }
+  text += 'Use these exact measurements to calculate material quantities instead of estimating from photos.\n';
+  return text;
+}
+
 function parseJSON(text) {
   const t = text.trim();
   try { return JSON.parse(t); }
@@ -162,7 +184,7 @@ async function handleSingle(body) {
 }
 
 async function handleBatch(body) {
-  const { images, roomName, notes, laborRate, markupPct, customMaterials } = body;
+  const { images, roomName, notes, laborRate, markupPct, customMaterials, dimensions } = body;
   if (!images || !images.length) throw new Error('images array is required');
 
   const rate = parseFloat(laborRate) || 75;
@@ -170,6 +192,7 @@ async function handleBatch(body) {
   const roomLabel = roomName ? `Room: ${roomName}\n` : '';
   const notesText = notes ? `Additional notes: "${notes}"\n` : '';
   const customPricesText = buildCustomPricesText(customMaterials);
+  const dimensionsText = buildDimensionsText(dimensions);
 
   const labeledContent = [];
   images.forEach((img, i) => {
@@ -179,7 +202,7 @@ async function handleBatch(body) {
 
   labeledContent.push({
     type: 'text',
-    text: `These ${images.length} photo${images.length !== 1 ? 's' : ''} are all from the same ${roomLabel.trim() || 'room'}. Analyze all of them together and produce a single unified construction estimate covering everything visible across all photos. Do not duplicate materials or labor tasks — combine into one estimate.\n\n${notesText}Settings:\n- Labor rate: $${rate}/hr\n- Material markup: ${markup}%\n${customPricesText}\nRespond ONLY with a JSON object matching this exact schema:\n\n${JSON.stringify(SCHEMA, null, 2)}`
+    text: `These ${images.length} photo${images.length !== 1 ? 's' : ''} are all from the same ${roomLabel.trim() || 'room'}. Analyze all of them together and produce a single unified construction estimate covering everything visible across all photos. Do not duplicate materials or labor tasks — combine into one estimate.\n\n${dimensionsText}${notesText}Settings:\n- Labor rate: $${rate}/hr\n- Material markup: ${markup}%\n${customPricesText}\nRespond ONLY with a JSON object matching this exact schema:\n\n${JSON.stringify(SCHEMA, null, 2)}`
   });
 
   const result = await callClaude({
